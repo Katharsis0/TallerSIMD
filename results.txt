@@ -1,0 +1,5 @@
+Implementation: Serial
+String Length: 32 bytes
+Memory Alignment: 8 bytes
+Repetitions: 1
+Random Seed: 42

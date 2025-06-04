@@ -1,18 +1,11 @@
-// char_count_serial.cpp
-// Serial character frequency analysis implementation
-// CE-4302 Arquitectura de Computadores II
-
+// char_count_simd.cpp
 #include "utils.h"
-#include <vector>
-#include <algorithm>
-#include <fstream>
-#include <ctime>
-#include <numeric>
-/**
- * Serial implementation of character frequency analyzer
- * Counts ALL characters in the string and returns frequency map
- */
-class SerialCharacterCounter : public CharacterCounterBase {
+#include <immintrin.h>
+#include <nmmintrin.h>
+#include <algorithm>  
+#include <fstream>   
+
+class SIMDCharacterCounter : public CharacterCounterBase {
 public:
     std::unordered_map<char, size_t> countAllCharacters(const char* str, size_t length, 
                                                        PerformanceMetrics& metrics) override {
@@ -20,28 +13,72 @@ public:
         auto startTime = std::chrono::high_resolution_clock::now();
         
         std::unordered_map<char, size_t> charCounts;
-        
-        // Serial algorithm: iterate through each character and count all occurrences
-        // Note: length includes null terminator, so we process length-1 characters
-        for (size_t i = 0; i < length - 1; ++i) {
-            charCounts[str[i]]++;
+
+        // First, find all unique characters in the string to know which ones to count
+        findUniqueCharacters(str, length - 1, charCounts);
+
+        // Then count each unique character using SIMD
+        for (auto& pair : charCounts) {
+            pair.second = countCharacterOccurrences(str, length - 1, pair.first);
         }
        
         auto endTime = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime);
         
         // Fill performance metrics
-        metrics.executionTimeMs = duration.count() / 1000000.0; // Convert to milliseconds
+        metrics.executionTimeMs = duration.count() / 1000000.0;
         metrics.memoryUsedBytes = length;
         metrics.stringLength = length;
-        metrics.totalCharacters = length - 1; // Exclude null terminator
+        metrics.totalCharacters = length - 1;
         metrics.uniqueCharacters = charCounts.size();
         
         return charCounts;
     }
     
     std::string getImplementationName() const override {
-        return "Serial";
+        return "SIMD";
+    }
+
+private:
+    // Helper function to find all unique characters in the string
+    void findUniqueCharacters(const char* str, size_t length, 
+                            std::unordered_map<char, size_t>& charCounts) {
+        for (size_t i = 0; i < length; ++i) {
+            charCounts[str[i]] = 0; // Initialize count to 0
+        }
+    }
+
+    // SIMD implementation to count occurrences of a specific character
+    size_t countCharacterOccurrences(const char* str, size_t length, char char_x) {
+        size_t total = 0;
+        size_t i = 0;
+        
+        // Broadcast the character to all positions in a 128-bit vector
+        __m128i vector_char = _mm_set1_epi8(char_x);
+
+        // Process 16 bytes at a time
+        for (; i <= length - 16; i += 16) {
+            // Load 16 bytes (unaligned)
+            __m128i block = _mm_loadu_si128(reinterpret_cast<const __m128i*>(str + i));
+            
+            // Compare each byte with the target character
+            __m128i comparison = _mm_cmpeq_epi8(block, vector_char);
+            
+            // Create a bitmask from the comparison results
+            int mask = _mm_movemask_epi8(comparison);
+            
+            // Count the number of set bits (1s) in the mask
+            total += _mm_popcnt_u32(static_cast<unsigned int>(mask));
+        }
+
+        // Process remaining bytes (less than 16)
+        for (; i < length; ++i) {
+            if (str[i] == char_x) {
+                ++total;
+            }
+        }
+
+        return total;
     }
 };
 
@@ -120,7 +157,7 @@ void exportCharacterFrequencyCSV(const std::unordered_map<char, size_t>& charCou
 /**
  * Run performance analysis with given configuration
  */
-void runPerformanceAnalysis(SerialCharacterCounter& counter, const TestConfiguration& config) {
+void runPerformanceAnalysis(SIMDCharacterCounter& counter, const TestConfiguration& config) {
     std::cout << "\n=== Performance Analysis ===" << std::endl;
     std::cout << "Implementation: " << counter.getImplementationName() << std::endl;
     std::cout << "String Length: " << config.stringLength << " bytes" << std::endl;
@@ -240,7 +277,7 @@ void exportPerformanceDataCSV(const std::vector<double>& executionTimes,
         auto tm = *std::localtime(&now);
         char timestamp[100];
         std::strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", &tm);
-        csvFilename = "serial_performance_" + std::string(timestamp) + ".csv";
+        csvFilename = "simd_performance_" + std::string(timestamp) + ".csv";
     }
     
     std::ofstream file(csvFilename);
@@ -266,7 +303,7 @@ void exportPerformanceDataCSV(const std::vector<double>& executionTimes,
     double avgCharsPerSec = totalChars / (avgTime / 1000.0);
     
     // Write metadata and summary statistics
-    file << "# Serial Character Frequency Analysis Results\n";
+    file << "# SIMD Character Frequency Analysis Results\n";
     file << "# Configuration\n";
     file << "StringLength," << config.stringLength << "\n";
     file << "Alignment," << config.alignment << "\n";
@@ -439,7 +476,7 @@ void exportSummaryStatsCSV(const TestConfiguration& config,
     
     std::string csvFilename = filename;
     if (csvFilename.empty()) {
-        csvFilename = "serial_summary_stats.csv";
+        csvFilename = "simd_summary_stats.csv";
     }
     
     // Check if file exists to determine if we need headers
@@ -482,7 +519,7 @@ void exportSummaryStatsCSV(const TestConfiguration& config,
     std::strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", &tm);
     
     // Write data row
-    file << timestamp << ",Serial," << config.stringLength << "," << config.alignment << ","
+    file << timestamp << ",SIMD," << config.stringLength << "," << config.alignment << ","
          << config.repetitions << "," << config.randomSeed << "," << totalChars << ","
          << charCounts.size() << "," << std::fixed << std::setprecision(6)
          << avgTime << "," << stdDev << "," << minTime << "," << maxTime << ","
@@ -492,15 +529,13 @@ void exportSummaryStatsCSV(const TestConfiguration& config,
     std::cout << "Summary statistics appended to: " << csvFilename << std::endl;
 }
 
-
-
 int main() {
     std::cout << "======================================================" << std::endl;
-    std::cout << "   Serial Character Frequency Analysis               " << std::endl;
+    std::cout << "   SIMD Character Frequency Analysis                 " << std::endl;
     std::cout << "   CE-4302 Arquitectura de Computadores II           " << std::endl;
     std::cout << "======================================================" << std::endl;
     
-    SerialCharacterCounter counter;
+    SIMDCharacterCounter counter;
     
     try {
         // Get user configuration
@@ -510,13 +545,12 @@ int main() {
         // Run main performance analysis
         runPerformanceAnalysis(counter, config);
         
-        
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
         return 1;
     }
     
-    std::cout << "\nSerial character frequency analysis completed successfully!" << std::endl;
+    std::cout << "\nSIMD character frequency analysis completed successfully!" << std::endl;
     
     return 0;
 }
