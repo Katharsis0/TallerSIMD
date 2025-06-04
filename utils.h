@@ -14,10 +14,6 @@
 #include <chrono>
 #include <iomanip>
 
-// Forward declarations
-struct PerformanceMetrics;
-class RandomStringGenerator;
-
 /**
  * Performance metrics structure to standardize measurements
  * between serial and SIMD implementations
@@ -27,24 +23,23 @@ struct PerformanceMetrics {
     size_t memoryUsedBytes = 0;
     size_t stringLength = 0;
     size_t alignment = 0;
-    size_t characterCount = 0;        // Count of specific character (for compatibility)
     size_t totalCharacters = 0;       // Total characters processed
     size_t uniqueCharacters = 0;      // Number of unique characters found
-    char searchCharacter = '\0';      // Target character (for compatibility)
     
     void print() const;
     void printCSVHeader() const;
     void printCSVRow() const;
     double getThroughputMBps() const;
+    double getCharactersPerSecond() const;
 };
 
 /**
- * Random string generator with configurable alignment
- * Shared between serial and SIMD implementations
+ * Deterministic random string generator with configurable alignment
+ * Uses fixed seed for reproducible results between serial and SIMD implementations
  */
 class RandomStringGenerator {
 public:
-    RandomStringGenerator();
+    explicit RandomStringGenerator(uint32_t seed = 42);
     ~RandomStringGenerator();
     
     /**
@@ -62,23 +57,22 @@ public:
     void freeAlignedString(void* alignedPtr);
     
     /**
-     * Generate string with specific character distribution for testing
-     * @param length String length
-     * @param alignment Memory alignment
-     * @param targetChar Character to include with specified frequency
-     * @param frequency Approximate frequency of targetChar (0.0 to 1.0)
+     * Reset generator to initial seed state for reproducible results
      */
-    void* generateAlignedStringWithFrequency(size_t length, size_t alignment, 
-                                           char targetChar, double frequency);
+    void resetSeed();
+    
+    /**
+     * Get current seed value
+     */
+    uint32_t getSeed() const { return seed; }
 
 private:
-    std::mt19937 rng; // Random number generator
+    std::mt19937 rng;
+    uint32_t seed;
     std::unordered_map<void*, void*> originalPointers;
     
     void* align(size_t alignment, size_t size, void* ptr, size_t space);
     void generateRandomUTF8(char* buffer, size_t length);
-    void generateRandomUTF8WithFrequency(char* buffer, size_t length, 
-                                       char targetChar, double frequency);
 };
 
 /**
@@ -90,25 +84,38 @@ public:
     virtual ~CharacterCounterBase() = default;
     
     /**
-     * Count occurrences of target character in string
+     * Count ALL characters in string and return frequency map
      * @param str Input string
-     * @param length String length
-     * @param target Character to count
+     * @param length String length (including null terminator)
      * @param metrics Output performance metrics
-     * @return Number of occurrences
+     * @return Map of character frequencies
      */
-    virtual size_t countCharacter(const char* str, size_t length, char target, 
-                                PerformanceMetrics& metrics) = 0;
+    virtual std::unordered_map<char, size_t> countAllCharacters(const char* str, size_t length, 
+                                                              PerformanceMetrics& metrics) = 0;
     
     /**
      * Get implementation name for reporting
      */
     virtual std::string getImplementationName() const = 0;
-    
-    /**
-     * Validate correctness by counting all characters
-     */
-    std::unordered_map<char, size_t> countAllCharacters(const char* str, size_t length);
 };
+
+/**
+ * Test configuration structure for user input
+ */
+struct TestConfiguration {
+    size_t stringLength;
+    size_t alignment;
+    int repetitions;
+    bool exportCSV;
+    bool showDetailedFrequency;
+    uint32_t randomSeed;
+};
+
+/**
+ * Utility functions
+ */
+TestConfiguration getUserConfiguration();
+void validateConfiguration(const TestConfiguration& config);
+bool isPowerOfTwo(size_t value);
 
 #endif // UTILS_H

@@ -1,4 +1,6 @@
 #include "utils.h"
+#include <algorithm>
+#include <limits>
 
 // PerformanceMetrics implementation
 void PerformanceMetrics::print() const {
@@ -6,31 +8,38 @@ void PerformanceMetrics::print() const {
     std::cout << "=== Performance Metrics ===" << std::endl;
     std::cout << "String Length: " << stringLength << " bytes" << std::endl;
     std::cout << "Memory Alignment: " << alignment << " bytes" << std::endl;
-    std::cout << "Search Character: '" << searchCharacter << "'" << std::endl;
-    std::cout << "Character Count: " << characterCount << std::endl;
+    std::cout << "Total Characters: " << totalCharacters << std::endl;
+    std::cout << "Unique Characters: " << uniqueCharacters << std::endl;
     std::cout << "Execution Time: " << executionTimeMs << " ms" << std::endl;
     std::cout << "Memory Used: " << memoryUsedBytes << " bytes" << std::endl;
     std::cout << "Throughput: " << getThroughputMBps() << " MB/s" << std::endl;
+    std::cout << "Characters/sec: " << getCharactersPerSecond() << std::endl;
     std::cout << "=========================" << std::endl;
 }
 
 void PerformanceMetrics::printCSVHeader() const {
-    std::cout << "StringLength,Alignment,SearchChar,Count,ExecutionTimeMs,ThroughputMBps" << std::endl;
+    std::cout << "StringLength,Alignment,TotalChars,UniqueChars,ExecutionTimeMs,ThroughputMBps,CharsPerSecond" << std::endl;
 }
 
 void PerformanceMetrics::printCSVRow() const {
     std::cout << std::fixed << std::setprecision(6);
-    std::cout << stringLength << "," << alignment << "," << searchCharacter << "," 
-              << characterCount << "," << executionTimeMs << "," 
-              << getThroughputMBps() << std::endl;
+    std::cout << stringLength << "," << alignment << "," << totalCharacters << "," 
+              << uniqueCharacters << "," << executionTimeMs << "," 
+              << getThroughputMBps() << "," << getCharactersPerSecond() << std::endl;
 }
 
 double PerformanceMetrics::getThroughputMBps() const {
-    return (stringLength / (executionTimeMs / 1000.0)) / 1024.0 / 1024.0;
+    if (executionTimeMs <= 0) return 0.0;
+    return (stringLength / (executionTimeMs / 1000.0)) / (1024.0 * 1024.0);
+}
+
+double PerformanceMetrics::getCharactersPerSecond() const {
+    if (executionTimeMs <= 0) return 0.0;
+    return totalCharacters / (executionTimeMs / 1000.0);
 }
 
 // RandomStringGenerator implementation
-RandomStringGenerator::RandomStringGenerator() : rng(std::random_device{}()) {}
+RandomStringGenerator::RandomStringGenerator(uint32_t seed) : seed(seed), rng(seed) {}
 
 RandomStringGenerator::~RandomStringGenerator() {
     // Clean up any remaining allocated memory
@@ -39,9 +48,17 @@ RandomStringGenerator::~RandomStringGenerator() {
     }
 }
 
+void RandomStringGenerator::resetSeed() {
+    rng.seed(seed);
+}
+
 void* RandomStringGenerator::generateAlignedString(size_t length, size_t alignment) {
-    if (alignment == 0 || (alignment & (alignment - 1)) != 0) {
-        throw std::invalid_argument("Alineamiento debe ser potencia de 2.");
+    if (!isPowerOfTwo(alignment)) {
+        throw std::invalid_argument("Alignment must be power of 2");
+    }
+    
+    if (length == 0) {
+        throw std::invalid_argument("Length must be greater than 0");
     }
 
     // Calculate total size needed (string + alignment padding)
@@ -58,43 +75,11 @@ void* RandomStringGenerator::generateAlignedString(size_t length, size_t alignme
     
     if (!alignedMemory) {
         free(rawMemory);
-        throw std::runtime_error("Error al alinear");
+        throw std::runtime_error("Failed to align memory");
     }
     
     // Generate random UTF-8 string in the aligned memory
     generateRandomUTF8(static_cast<char*>(alignedMemory), length);
-    
-    // Store original pointer for proper deallocation
-    originalPointers[alignedMemory] = rawMemory;
-    
-    return alignedMemory;
-}
-
-void* RandomStringGenerator::generateAlignedStringWithFrequency(size_t length, size_t alignment, 
-                                                              char targetChar, double frequency) {
-    if (alignment == 0 || (alignment & (alignment - 1)) != 0) {
-        throw std::invalid_argument("Alineamiento debe ser potencia de 2.");
-    }
-
-    // Calculate total size needed (string + alignment padding)
-    size_t totalSize = length + alignment - 1;
-    
-    // Allocate raw memory
-    void* rawMemory = malloc(totalSize);
-    if (!rawMemory) {
-        throw std::bad_alloc();
-    }
-    
-    // Align the memory address
-    void* alignedMemory = align(alignment, length, rawMemory, totalSize);
-    
-    if (!alignedMemory) {
-        free(rawMemory);
-        throw std::runtime_error("Error al alinear");
-    }
-    
-    // Generate random UTF-8 string with specific frequency
-    generateRandomUTF8WithFrequency(static_cast<char*>(alignedMemory), length, targetChar, frequency);
     
     // Store original pointer for proper deallocation
     originalPointers[alignedMemory] = rawMemory;
@@ -115,7 +100,8 @@ void* RandomStringGenerator::align(size_t alignment, size_t size, void* ptr, siz
 }
 
 void RandomStringGenerator::generateRandomUTF8(char* buffer, size_t length) {
-    std::uniform_int_distribution<int> dist(32, 126); // ASCII printable chars
+    // Use printable ASCII characters (32-126) for simplicity and consistency
+    std::uniform_int_distribution<int> dist(32, 126);
     
     for (size_t i = 0; i < length - 1; ++i) {
         buffer[i] = static_cast<char>(dist(rng));
@@ -123,32 +109,88 @@ void RandomStringGenerator::generateRandomUTF8(char* buffer, size_t length) {
     buffer[length - 1] = '\0'; // Null-terminator
 }
 
-void RandomStringGenerator::generateRandomUTF8WithFrequency(char* buffer, size_t length, 
-                                                          char targetChar, double frequency) {
-    std::uniform_int_distribution<int> charDist(32, 126); // ASCII printable chars
-    std::uniform_real_distribution<double> freqDist(0.0, 1.0);
+// Utility functions
+TestConfiguration getUserConfiguration() {
+    TestConfiguration config;
     
-    for (size_t i = 0; i < length - 1; ++i) {
-        if (freqDist(rng) < frequency) {
-            buffer[i] = targetChar;
-        } else {
-            do {
-                buffer[i] = static_cast<char>(charDist(rng));
-            } while (buffer[i] == targetChar); // Ensure we don't accidentally include target char
+    std::cout << "\n=== Character Frequency Analysis Configuration ===" << std::endl;
+    
+    // Get string length
+    do {
+        std::cout << "Enter string length (bytes, minimum 16): ";
+        std::cin >> config.stringLength;
+        
+        if (std::cin.fail() || config.stringLength < 16) {
+            std::cin.clear();
+            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+            std::cout << "Invalid input. Please enter a number >= 16." << std::endl;
+            continue;
         }
-    }
-    buffer[length - 1] = '\0'; // Null-terminator
+        break;
+    } while (true);
+    
+    // Get memory alignment
+    do {
+        std::cout << "Enter memory alignment (bytes, must be power of 2: 1, 2, 4, 8, 16, 32, 64): ";
+        std::cin >> config.alignment;
+        
+        if (std::cin.fail() || !isPowerOfTwo(config.alignment)) {
+            std::cin.clear();
+            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+            std::cout << "Invalid input. Alignment must be a power of 2." << std::endl;
+            continue;
+        }
+        break;
+    } while (true);
+    
+    // Get number of repetitions
+    do {
+        std::cout << "Enter number of repetitions for averaging (1-1000): ";
+        std::cin >> config.repetitions;
+        
+        if (std::cin.fail() || config.repetitions < 1 || config.repetitions > 1000) {
+            std::cin.clear();
+            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+            std::cout << "Invalid input. Must be between 1 and 1000." << std::endl;
+            continue;
+        }
+        break;
+    } while (true);
+    
+    // Ask for detailed frequency results
+    char showDetailed;
+    std::cout << "Show detailed character frequency analysis? (y/n): ";
+    std::cin >> showDetailed;
+    config.showDetailedFrequency = (showDetailed == 'y' || showDetailed == 'Y');
+    
+    // Ask for CSV export
+    char exportCSV;
+    std::cout << "Export results to CSV format? (y/n): ";
+    std::cin >> exportCSV;
+    config.exportCSV = (exportCSV == 'y' || exportCSV == 'Y');
+    
+    // Set deterministic seed for reproducible results
+    config.randomSeed = 42;
+    
+    std::cout << "Using deterministic seed: " << config.randomSeed << " (for SIMD comparison)" << std::endl;
+    
+    return config;
 }
 
-// CharacterCounterBase implementation
-std::unordered_map<char, size_t> CharacterCounterBase::countAllCharacters(const char* str, size_t length) {
-    std::unordered_map<char, size_t> charCounts;
-    
-    for (size_t i = 0; i < length - 1; ++i) { // -1 to skip null terminator
-        charCounts[str[i]]++;
+void validateConfiguration(const TestConfiguration& config) {
+    if (config.stringLength < 16) {
+        throw std::invalid_argument("String length must be at least 16 bytes");
     }
     
-    return charCounts;
+    if (!isPowerOfTwo(config.alignment)) {
+        throw std::invalid_argument("Alignment must be a power of 2");
+    }
+    
+    if (config.repetitions < 1 || config.repetitions > 1000) {
+        throw std::invalid_argument("Repetitions must be between 1 and 1000");
+    }
 }
 
-
+bool isPowerOfTwo(size_t value) {
+    return value > 0 && (value & (value - 1)) == 0;
+}

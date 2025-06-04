@@ -1,23 +1,27 @@
 // char_count_serial.cpp
-// Serial character counting implementation with user input
+// Serial character frequency analysis implementation
+// CE-4302 Arquitectura de Computadores II
+
 #include "utils.h"
-#include <limits>
+#include <vector>
+#include <algorithm>
 
 /**
- * Serial implementation of character counter
- * Counts ALL characters in the string and returns character frequency map
+ * Serial implementation of character frequency analyzer
+ * Counts ALL characters in the string and returns frequency map
  */
 class SerialCharacterCounter : public CharacterCounterBase {
 public:
-    //Updated to count all characters, not just a target
     std::unordered_map<char, size_t> countAllCharacters(const char* str, size_t length, 
-                                                       PerformanceMetrics& metrics) {
+                                                       PerformanceMetrics& metrics) override {
+        
         auto startTime = std::chrono::high_resolution_clock::now();
         
         std::unordered_map<char, size_t> charCounts;
         
-        // Serial algorithm: iterate through each character and count all
-        for (size_t i = 0; i < length - 1; ++i) { // -1 to skip null terminator
+        // Serial algorithm: iterate through each character and count all occurrences
+        // Note: length includes null terminator, so we process length-1 characters
+        for (size_t i = 0; i < length - 1; ++i) {
             charCounts[str[i]]++;
         }
         
@@ -34,134 +38,120 @@ public:
         return charCounts;
     }
     
-    size_t countCharacter(const char* str, size_t length, char target, 
-                         PerformanceMetrics& metrics) override {
-        auto allCounts = countAllCharacters(str, length, metrics);
-        metrics.searchCharacter = target;
-        metrics.characterCount = allCounts[target];
-        return allCounts[target];
-    }
-    
     std::string getImplementationName() const override {
         return "Serial";
     }
 };
 
 /**
- * Get user input for test configuration
+ * Display character frequency results in a readable format
  */
-struct TestConfiguration {
-    size_t stringLength;
-    size_t alignment;
-    int repetitions;
-    bool showDetailedResults;
-    bool exportCSV;
-};
-
-TestConfiguration getUserConfiguration() {
-    TestConfiguration config;
+void displayCharacterFrequency(const std::unordered_map<char, size_t>& charCounts, 
+                              size_t totalChars, bool showDetailed) {
     
-    std::cout << "\n=== Test Configuration ===" << std::endl;
+    if (!showDetailed) {
+        std::cout << "Character frequency analysis completed. Use detailed view to see frequencies." << std::endl;
+        return;
+    }
     
-    // Get string length
-    do {
-        std::cout << "Enter string length (bytes, min 1024): ";
-        std::cin >> config.stringLength;
+    // Sort characters by frequency for better readability
+    std::vector<std::pair<char, size_t>> sortedChars(charCounts.begin(), charCounts.end());
+    std::sort(sortedChars.begin(), sortedChars.end(), 
+             [](const auto& a, const auto& b) { return a.second > b.second; });
+    
+    std::cout << "\n=== Character Frequency Distribution ===" << std::endl;
+    std::cout << "Rank | Character | ASCII | Count | Frequency (%)" << std::endl;
+    std::cout << "-----|-----------|-------|-------|-------------" << std::endl;
+    
+    int rank = 1;
+    for (const auto& pair : sortedChars) {
+        char ch = pair.first;
+        size_t count = pair.second;
+        double frequency = (static_cast<double>(count) / totalChars) * 100.0;
         
-        if (std::cin.fail() || config.stringLength < 1024) {
-            std::cin.clear();
-            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-            std::cout << "Invalid input. Please enter a number >= 1024." << std::endl;
-            continue;
-        }
-        break;
-    } while (true);
-    
-    // Get memory alignment
-    do {
-        std::cout << "Enter memory alignment (bytes, must be power of 2: 1, 2, 4, 8, 16, 32, 64): ";
-        std::cin >> config.alignment;
+        // Handle special characters for display
+        std::string charDisplay;
+        if (ch == ' ') charDisplay = "SPACE";
+        else if (ch == '\t') charDisplay = "TAB";
+        else if (ch == '\n') charDisplay = "NEWLINE";
+        else if (ch >= 32 && ch <= 126) charDisplay = std::string(1, ch);
+        else charDisplay = "CTRL";
         
-        if (std::cin.fail() || config.alignment == 0 || (config.alignment & (config.alignment - 1)) != 0) {
-            std::cin.clear();
-            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-            std::cout << "Invalid input. Alignment must be a power of 2." << std::endl;
-            continue;
-        }
-        break;
-    } while (true);
-    
-    // Get number of repetitions for averaging
-    do {
-        std::cout << "Enter number of repetitions for averaging (min 1, recommended 10-100): ";
-        std::cin >> config.repetitions;
+        std::cout << std::setw(4) << rank << " | " 
+                 << std::setw(9) << charDisplay << " | " 
+                 << std::setw(5) << static_cast<int>(ch) << " | "
+                 << std::setw(5) << count << " | " 
+                 << std::setw(10) << std::setprecision(3) << std::fixed << frequency << std::endl;
         
-        if (std::cin.fail() || config.repetitions < 1) {
-            std::cin.clear();
-            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-            std::cout << "Invalid input. Must be at least 1." << std::endl;
-            continue;
-        }
-        break;
-    } while (true);
+        rank++;
+        if (rank > 20 && !showDetailed) break; // Limit display for readability
+    }
     
-    // Ask for detailed results
-    char showDetailed;
-    std::cout << "Show detailed character frequency results? (y/n): ";
-    std::cin >> showDetailed;
-    config.showDetailedResults = (showDetailed == 'y' || showDetailed == 'Y');
-    
-    // Ask for CSV export
-    char exportCSV;
-    std::cout << "Export results to CSV format? (y/n): ";
-    std::cin >> exportCSV;
-    config.exportCSV = (exportCSV == 'y' || exportCSV == 'Y');
-    
-    return config;
+    if (sortedChars.size() > 20) {
+        std::cout << "... and " << (sortedChars.size() - 20) << " more characters" << std::endl;
+    }
 }
 
 /**
- * Performance analysis function with user-specified parameters
- * Now counts ALL characters in the string
+ * Export character frequency data to CSV format
  */
-void analyzePerformance(SerialCharacterCounter& counter, const TestConfiguration& config) {
+void exportCharacterFrequencyCSV(const std::unordered_map<char, size_t>& charCounts, 
+                                size_t totalChars) {
+    std::cout << "\n=== Character Frequency CSV Data ===" << std::endl;
+    std::cout << "Character,ASCII_Code,Count,Frequency_Percent" << std::endl;
+    
+    // Sort by ASCII value for consistent output
+    std::vector<std::pair<char, size_t>> sortedChars(charCounts.begin(), charCounts.end());
+    std::sort(sortedChars.begin(), sortedChars.end(), 
+             [](const auto& a, const auto& b) { return a.first < b.first; });
+    
+    for (const auto& pair : sortedChars) {
+        char ch = pair.first;
+        size_t count = pair.second;
+        double frequency = (static_cast<double>(count) / totalChars) * 100.0;
+        
+        std::cout << "\"" << ch << "\"," << static_cast<int>(ch) << "," 
+                 << count << "," << std::fixed << std::setprecision(6) << frequency << std::endl;
+    }
+}
+
+/**
+ * Run performance analysis with given configuration
+ */
+void runPerformanceAnalysis(SerialCharacterCounter& counter, const TestConfiguration& config) {
     std::cout << "\n=== Performance Analysis ===" << std::endl;
     std::cout << "Implementation: " << counter.getImplementationName() << std::endl;
     std::cout << "String Length: " << config.stringLength << " bytes" << std::endl;
     std::cout << "Memory Alignment: " << config.alignment << " bytes" << std::endl;
     std::cout << "Repetitions: " << config.repetitions << std::endl;
+    std::cout << "Random Seed: " << config.randomSeed << std::endl;
     
-    RandomStringGenerator generator;
+    RandomStringGenerator generator(config.randomSeed);
     
     try {
-        // Generate aligned string with random characters
-        std::cout << "Generating random string with uniform character distribution..." << std::endl;
+        // Generate aligned string with deterministic random characters
+        std::cout << "\nGenerating deterministic random string..." << std::endl;
         void* aligned = generator.generateAlignedString(config.stringLength, config.alignment);
         
-        std::cout << "\nRunning character counting tests..." << std::endl;
+        std::cout << "Running character frequency analysis..." << std::endl;
         
         // Performance measurements
-        double totalTime = 0;
         std::vector<double> executionTimes;
-        std::unordered_map<char, size_t> aggregatedCounts;
-        size_t totalUniqueChars = 0;
+        std::unordered_map<char, size_t> finalCharCounts;
         
-        // Run multiple repetitions
+        // Run multiple repetitions with same string
         for (int rep = 0; rep < config.repetitions; ++rep) {
             PerformanceMetrics metrics;
             metrics.alignment = config.alignment;
             
-            // Count ALL characters in the string
             auto charCounts = counter.countAllCharacters(
                 static_cast<char*>(aligned), config.stringLength, metrics);
             
-            totalTime += metrics.executionTimeMs;
             executionTimes.push_back(metrics.executionTimeMs);
             
-            // Aggregate character counts across repetitions
+            // Store character counts from first run (should be identical across runs)
             if (rep == 0) {
-                aggregatedCounts = charCounts;
-                totalUniqueChars = charCounts.size();
+                finalCharCounts = charCounts;
             }
             
             // Show progress for long tests
@@ -170,9 +160,9 @@ void analyzePerformance(SerialCharacterCounter& counter, const TestConfiguration
             }
         }
         
-        // Calculate statistics
+        // Calculate performance statistics
+        double totalTime = std::accumulate(executionTimes.begin(), executionTimes.end(), 0.0);
         double avgTime = totalTime / config.repetitions;
-        double avgThroughput = (config.stringLength / (avgTime / 1000.0)) / 1024.0 / 1024.0;
         
         // Calculate standard deviation
         double variance = 0;
@@ -181,137 +171,108 @@ void analyzePerformance(SerialCharacterCounter& counter, const TestConfiguration
         }
         double stdDev = std::sqrt(variance / config.repetitions);
         
-        // Display results
-        std::cout << "\n=== Character Counting Results ===" << std::endl;
+        // Find min/max times
+        double minTime = *std::min_element(executionTimes.begin(), executionTimes.end());
+        double maxTime = *std::max_element(executionTimes.begin(), executionTimes.end());
+        
+        // Calculate derived metrics
+        size_t totalChars = config.stringLength - 1; // Exclude null terminator
+        double avgThroughput = (config.stringLength / (avgTime / 1000.0)) / (1024.0 * 1024.0);
+        double avgCharsPerSec = totalChars / (avgTime / 1000.0);
+        
+        // Display performance results
+        std::cout << "\n=== Character Analysis Results ===" << std::endl;
         std::cout << std::fixed << std::setprecision(6);
-        std::cout << "Total Characters Processed: " << (config.stringLength - 1) << std::endl;
-        std::cout << "Unique Characters Found: " << totalUniqueChars << std::endl;
+        std::cout << "Total Characters Analyzed: " << totalChars << std::endl;
+        std::cout << "Unique Characters Found: " << finalCharCounts.size() << std::endl;
+        
+        std::cout << "\n=== Performance Results ===" << std::endl;
         std::cout << "Average Execution Time: " << avgTime << " ms" << std::endl;
         std::cout << "Standard Deviation: " << stdDev << " ms" << std::endl;
+        std::cout << "Min Execution Time: " << minTime << " ms" << std::endl;
+        std::cout << "Max Execution Time: " << maxTime << " ms" << std::endl;
         std::cout << "Average Throughput: " << avgThroughput << " MB/s" << std::endl;
-        std::cout << "Characters per Second: " << ((config.stringLength - 1) / (avgTime / 1000.0)) << std::endl;
+        std::cout << "Characters per Second: " << avgCharsPerSec << std::endl;
         
-        // Show detailed character frequency if requested
-        if (config.showDetailedResults) {
-            std::cout << "\n=== Character Frequency Distribution ===" << std::endl;
-            
-            // Sort characters by frequency for better readability
-            std::vector<std::pair<char, size_t>> sortedChars(aggregatedCounts.begin(), aggregatedCounts.end());
-            std::sort(sortedChars.begin(), sortedChars.end(), 
-                     [](const auto& a, const auto& b) { return a.second > b.second; });
-            
-            std::cout << "Character | Count | Frequency (%)" << std::endl;
-            std::cout << "----------|-------|-------------" << std::endl;
-            
-            for (const auto& pair : sortedChars) {
-                char ch = pair.first;
-                size_t count = pair.second;
-                double frequency = (static_cast<double>(count) / (config.stringLength - 1)) * 100.0;
-                
-                // Handle special characters for display
-                std::string charDisplay;
-                if (ch == ' ') charDisplay = "SPACE";
-                else if (ch == '\t') charDisplay = "TAB";
-                else if (ch == '\n') charDisplay = "NEWLINE";
-                else if (ch >= 32 && ch <= 126) charDisplay = std::string(1, ch);
-                else charDisplay = "ASCII(" + std::to_string(static_cast<int>(ch)) + ")";
-                
-                std::cout << std::setw(9) << charDisplay << " | " 
-                         << std::setw(5) << count << " | " 
-                         << std::setw(10) << std::setprecision(3) << frequency << std::endl;
-            }
-        }
+        // Memory alignment verification
+        std::cout << "\n=== Memory Alignment Verification ===" << std::endl;
+        uintptr_t address = reinterpret_cast<uintptr_t>(aligned);
+        std::cout << "Memory Address: 0x" << std::hex << address << std::dec << std::endl;
+        std::cout << "Alignment Check: " << (address % config.alignment == 0 ? "PASSED" : "FAILED") << std::endl;
+        std::cout << "Address modulo alignment: " << (address % config.alignment) << std::endl;
         
-        // CSV output for further analysis
+        // Display character frequency analysis
+        displayCharacterFrequency(finalCharCounts, totalChars, config.showDetailedFrequency);
+        
+        // CSV output for analysis scripts
         if (config.exportCSV) {
-            std::cout << "\n=== CSV Data for Analysis ===" << std::endl;
-            std::cout << "StringLength,Alignment,UniqueChars,TotalChars,AvgExecutionTimeMs,StdDevMs,AvgThroughputMBps,CharsPerSecond" << std::endl;
-            std::cout << config.stringLength << "," << config.alignment << "," << totalUniqueChars << "," 
-                      << (config.stringLength - 1) << "," << avgTime << "," << stdDev << "," << avgThroughput << "," 
-                      << ((config.stringLength - 1) / (avgTime / 1000.0)) << std::endl;
+            std::cout << "\n=== Performance CSV Export ===" << std::endl;
+            std::cout << "StringLength,Alignment,TotalChars,UniqueChars,AvgTimeMs,StdDevMs,MinTimeMs,MaxTimeMs,ThroughputMBps,CharsPerSec" << std::endl;
+            std::cout << config.stringLength << "," << config.alignment << "," << totalChars << "," 
+                      << finalCharCounts.size() << "," << avgTime << "," << stdDev << "," << minTime << "," << maxTime << "," 
+                      << avgThroughput << "," << avgCharsPerSec << std::endl;
             
             // Export character frequency data
-            std::cout << "\n=== Character Frequency CSV ===" << std::endl;
-            std::cout << "Character,ASCII_Code,Count,Frequency_Percent" << std::endl;
-            for (const auto& pair : aggregatedCounts) {
-                char ch = pair.first;
-                size_t count = pair.second;
-                double frequency = (static_cast<double>(count) / (config.stringLength - 1)) * 100.0;
-                
-                std::cout << "\"" << ch << "\"," << static_cast<int>(ch) << "," 
-                         << count << "," << frequency << std::endl;
-            }
+            exportCharacterFrequencyCSV(finalCharCounts, totalChars);
         }
         
         generator.freeAlignedString(aligned);
         
     } catch (const std::exception& e) {
         std::cerr << "Error during performance analysis: " << e.what() << std::endl;
+        throw;
     }
 }
 
 /**
- * Multiple size analysis for cache behavior study
- * Tests character counting performance across different memory sizes
+ * Run a batch test with multiple sizes for cache behavior analysis
  */
-void analyzeCacheBehavior(SerialCharacterCounter& counter) {
+void runCacheBehaviorAnalysis(SerialCharacterCounter& counter, size_t alignment, uint32_t seed) {
     std::cout << "\n=== Cache Behavior Analysis ===" << std::endl;
     
-    char choice;
-    std::cout << "Do you want to run cache behavior analysis with multiple sizes? (y/n): ";
-    std::cin >> choice;
-    
-    if (choice != 'y' && choice != 'Y') {
-        return;
-    }
-    
-    RandomStringGenerator generator;
-    
-    // Test cache effects with different sizes
-    std::vector<size_t> cacheSizes = {
-        1024,       // 1KB - L1 cache
-        32768,      // 32KB - L1 cache boundary
-        262144,     // 256KB - L2 cache
-        1048576,    // 1MB - L2 cache boundary
-        8388608,    // 8MB - L3 cache
-        33554432    // 32MB - Beyond L3 cache
+    // Test sizes that span different cache levels
+    std::vector<size_t> testSizes = {
+        1024,      // 1KB  - L1 cache
+        4096,      // 4KB  - Page size
+        32768,     // 32KB - L1 cache boundary
+        262144,    // 256KB - L2 cache
+        1048576,   // 1MB  - L2/L3 boundary
+        4194304,   // 4MB  - L3 cache
+        16777216   // 16MB - Beyond cache
     };
     
-    size_t alignment = 32;
     const int repetitions = 20;
+    RandomStringGenerator generator(seed);
     
-    std::cout << "\nCache behavior test configuration:" << std::endl;
-    std::cout << "Alignment: " << alignment << " bytes" << std::endl;
-    std::cout << "Repetitions per size: " << repetitions << std::endl;
+    std::cout << "Size(bytes),SizeDesc,AvgTimeMs,ThroughputMBps,CharsPerSec,UniqueChars,CharDensity" << std::endl;
     
-    std::cout << "\n=== Cache Behavior Results ===" << std::endl;
-    std::cout << "Size(bytes),Size(description),AvgTime(ms),Throughput(MB/s),UniqueChars,CharsPerSecond" << std::endl;
-    
-    for (size_t size : cacheSizes) {
+    for (size_t size : testSizes) {
         try {
             void* aligned = generator.generateAlignedString(size, alignment);
             
-            double totalTime = 0;
+            std::vector<double> times;
             size_t avgUniqueChars = 0;
             
             for (int rep = 0; rep < repetitions; ++rep) {
                 PerformanceMetrics metrics;
                 auto charCounts = counter.countAllCharacters(static_cast<char*>(aligned), size, metrics);
-                totalTime += metrics.executionTimeMs;
+                times.push_back(metrics.executionTimeMs);
                 if (rep == 0) avgUniqueChars = charCounts.size();
             }
             
-            double avgTime = totalTime / repetitions;
-            double throughput = (size / (avgTime / 1000.0)) / 1024.0 / 1024.0;
-            double charsPerSecond = (size - 1) / (avgTime / 1000.0);
+            double avgTime = std::accumulate(times.begin(), times.end(), 0.0) / repetitions;
+            double throughput = (size / (avgTime / 1000.0)) / (1024.0 * 1024.0);
+            double charsPerSec = (size - 1) / (avgTime / 1000.0);
+            double charDensity = static_cast<double>(avgUniqueChars) / (size - 1) * 100.0;
             
             std::string sizeDesc;
             if (size < 1024) sizeDesc = std::to_string(size) + "B";
             else if (size < 1048576) sizeDesc = std::to_string(size/1024) + "KB";
             else sizeDesc = std::to_string(size/1048576) + "MB";
             
-            std::cout << size << "," << sizeDesc << "," << avgTime << "," << throughput << "," 
-                     << avgUniqueChars << "," << charsPerSecond << std::endl;
+            std::cout << std::fixed << std::setprecision(6);
+            std::cout << size << "," << sizeDesc << "," << avgTime << "," << throughput 
+                     << "," << charsPerSec << "," << avgUniqueChars << "," << charDensity << std::endl;
             
             generator.freeAlignedString(aligned);
             
@@ -322,28 +283,37 @@ void analyzeCacheBehavior(SerialCharacterCounter& counter) {
 }
 
 int main() {
-    std::cout << "================================================" << std::endl;
-    std::cout << "   Serial Character Counting Benchmark         " << std::endl;
-    std::cout << "   CE-4302 Arquitectura de Computadores II     " << std::endl;
-    std::cout << "================================================" << std::endl;
+    std::cout << "======================================================" << std::endl;
+    std::cout << "   Serial Character Frequency Analysis               " << std::endl;
+    std::cout << "   CE-4302 Arquitectura de Computadores II           " << std::endl;
+    std::cout << "======================================================" << std::endl;
     
     SerialCharacterCounter counter;
     
     try {
         // Get user configuration
         TestConfiguration config = getUserConfiguration();
+        validateConfiguration(config);
         
-        // Run performance analysis with user parameters
-        analyzePerformance(counter, config);
+        // Run main performance analysis
+        runPerformanceAnalysis(counter, config);
         
-        // Optional cache behavior analysis
-        //analyzeCacheBehavior(counter);
+        // Ask for cache behavior analysis
+        char runCache;
+        std::cout << "\nRun cache behavior analysis with multiple sizes? (y/n): ";
+        std::cin >> runCache;
+        
+        if (runCache == 'y' || runCache == 'Y') {
+            runCacheBehaviorAnalysis(counter, config.alignment, config.randomSeed);
+        }
         
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
         return 1;
     }
     
-    std::cout << "\nBenchmark completed successfully!" << std::endl;
+    std::cout << "\nSerial character frequency analysis completed successfully!" << std::endl;
+    std::cout << "Note: Use the same random seed (" << 42 << ") for SIMD implementation comparison." << std::endl;
+    
     return 0;
 }
