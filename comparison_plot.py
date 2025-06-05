@@ -16,8 +16,8 @@ class PerformanceComparison:
         self.results = {
             'Serial_16': {'sizes': [], 'times': [], 'throughputs': []},
             'SIMD_16': {'sizes': [], 'times': [], 'throughputs': []},
-            'SIMD_unaligned': {'sizes': [], 'times': [], 'throughputs': []}
-        }
+            'SIMD_32': {'sizes': [], 'times': [], 'throughputs': []},
+            'SIMD_unaligned': {'sizes': [], 'times': [], 'throughputs': []}}
         
     def run_single_test(self, executable: str, string_length: int, alignment: int = 16, 
                    target_char: str = ';', repetitions: int = 100) -> Dict:
@@ -73,7 +73,7 @@ class PerformanceComparison:
         print("=== Performance Comparison ===")
         print(f"String sizes: {string_sizes}")
         print(f"Target character: '{target_char}'")
-        print("Testing: Serial (16B aligned), SIMD (16B aligned), SIMD (unaligned)\n")
+        print("Testing: Serial, SIMD (16B aligned), SIMD (unaligned)\n")
         
         for size in string_sizes:
             print(f"Testing string length: {size} bytes")
@@ -89,7 +89,7 @@ class PerformanceComparison:
             print(f"  Using {repetitions} repetitions for this size")
             
             # Test Serial implementation (16-byte aligned)
-            print("  Running Serial implementation (16B aligned)...")
+            print("  Running Serial implementation...")
             serial_result = self.run_single_test(self.serial_executable, size, 16, target_char, repetitions)
             
             if serial_result:
@@ -118,6 +118,16 @@ class PerformanceComparison:
                 self.results['SIMD_unaligned']['throughputs'].append(simd_unaligned_result['throughput_mbps'])
                 print(f"    SIMD (unaligned): {simd_unaligned_result['avg_time_ms']:.6f} ms")
             
+            # Test SIMD implementation (32-byte aligned)
+            print("  Running SIMD implementation (32B aligned)...")
+            simd_32_result = self.run_single_test(self.simd_executable, size, 32, target_char, repetitions)
+
+            if simd_32_result:
+                self.results['SIMD_32']['sizes'].append(size)
+                self.results['SIMD_32']['times'].append(simd_32_result['avg_time_ms'])
+                self.results['SIMD_32']['throughputs'].append(simd_32_result['throughput_mbps'])
+                print(f"    SIMD (32B):   {simd_32_result['avg_time_ms']:.6f} ms")
+            
             print()
     
     def create_normalized_time_plot(self, output_dir: str = "comparison_plots"):
@@ -126,29 +136,40 @@ class PerformanceComparison:
         if not (self.results['Serial_16']['sizes'] and self.results['SIMD_16']['sizes'] and self.results['SIMD_unaligned']['sizes']):
             print("Insufficient data to create plot")
             return
+        if not (self.results['SIMD_32']['sizes']):
+            print("Missing SIMD 32B data.")
+            return
         
         os.makedirs(output_dir, exist_ok=True)
         
         plt.figure(figsize=(12, 8))
         
         # Get common sizes where all three implementations have data
-        common_sizes = sorted(set(self.results['Serial_16']['sizes']) & 
-                            set(self.results['SIMD_16']['sizes']) & 
-                            set(self.results['SIMD_unaligned']['sizes']))
+        common_sizes = sorted(set(self.results['Serial_16']['sizes']) &
+                      set(self.results['SIMD_16']['sizes']) &
+                      set(self.results['SIMD_32']['sizes']) &
+                      set(self.results['SIMD_unaligned']['sizes']))
         
         if not common_sizes:
             print("No common sizes found for all implementations")
             return
+
+       
+
         
         # Get execution times for common sizes
         serial_times = [self.results['Serial_16']['times'][self.results['Serial_16']['sizes'].index(size)] for size in common_sizes]
         simd_16_times = [self.results['SIMD_16']['times'][self.results['SIMD_16']['sizes'].index(size)] for size in common_sizes]
         simd_unaligned_times = [self.results['SIMD_unaligned']['times'][self.results['SIMD_unaligned']['sizes'].index(size)] for size in common_sizes]
-        
+        simd_32_times = [self.results['SIMD_32']['times'][self.results['SIMD_32']['sizes'].index(size)] for size in common_sizes]
+
+
+
         # Normalize times relative to serial implementation
         max_serial_time = max(serial_times)
         normalized_serial = [t/max_serial_time for t in serial_times]
         normalized_simd_16 = [t/max_serial_time for t in simd_16_times]
+        normalized_simd_32 = [t/max_serial_time for t in simd_32_times]
         normalized_simd_unaligned = [t/max_serial_time for t in simd_unaligned_times]
         
         # Plot results
@@ -158,9 +179,14 @@ class PerformanceComparison:
         plt.loglog(common_sizes, normalized_simd_16, 'r-s', label='SIMD (16B aligned)', 
                 linewidth=3, markersize=8, markerfacecolor='lightcoral', markeredgecolor='red')
         
+        plt.loglog(common_sizes, normalized_simd_32, 'm-D', label='SIMD (32B aligned)', 
+           linewidth=3, markersize=8, markerfacecolor='violet', markeredgecolor='purple')
+
         plt.loglog(common_sizes, normalized_simd_unaligned, 'g-^', label='SIMD (unaligned)', 
                 linewidth=3, markersize=8, markerfacecolor='lightgreen', markeredgecolor='green')
+
         
+
         plt.xlabel('Input Vector Size (bytes)', fontsize=14, fontweight='bold')
         plt.ylabel('Normalized Execution Time (Serial max = 1.0)', fontsize=14, fontweight='bold')
         plt.title('Normalized Execution Time Comparison\nSerial vs SIMD (aligned/unaligned)', 
