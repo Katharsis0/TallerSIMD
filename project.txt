@@ -1,0 +1,1414 @@
+================================================
+FILE: char_count_serial.cpp
+================================================
+// char_count_serial.cpp
+// Serial character occurrence counting implementation
+// CE-4302 Arquitectura de Computadores II
+
+#include "utils.h"
+#include <vector>
+#include <algorithm>
+#include <fstream>
+#include <ctime>
+#include <numeric>
+
+// Forward declarations
+void displayCharacterOccurrences(char targetChar, size_t occurrences, size_t totalChars);
+void exportResultsCSV(char targetChar, size_t occurrences, size_t totalChars, 
+                     const std::vector<double>& executionTimes, const TestConfiguration& config,
+                     const std::string& filename);
+
+/**
+ * Serial implementation of character occurrence counter
+ * Counts occurrences of a SPECIFIC character in the string
+ */
+class SerialCharacterCounter : public CharacterCounterBase {
+public:
+    size_t countCharacterOccurrences(const char* str, size_t length, char targetChar,
+                                   PerformanceMetrics& metrics) override {
+        
+        auto startTime = std::chrono::high_resolution_clock::now();
+        
+        size_t occurrences = 0;
+        
+        // Serial algorithm: iterate through each character and count target occurrences
+        // Note: length includes null terminator, so we process length-1 characters
+        for (size_t i = 0; i < length - 1; ++i) {
+            if (str[i] == targetChar) {
+                occurrences++;
+            }
+        }
+       
+        auto endTime = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime);
+        
+        // Fill performance metrics
+        metrics.executionTimeMs = duration.count() / 1000000.0; // Convert to milliseconds
+        metrics.memoryUsedBytes = length;
+        metrics.stringLength = length;
+        metrics.totalCharacters = length - 1; // Exclude null terminator
+        metrics.targetCharacter = targetChar;
+        metrics.occurrences = occurrences;
+        
+        return occurrences;
+    }
+    
+    std::string getImplementationName() const override {
+        return "Serial";
+    }
+};
+
+/**
+ * Display character occurrence results in a readable format
+ */
+void displayCharacterOccurrences(char targetChar, size_t occurrences, size_t totalChars) {
+    std::cout << "\n=== Character Occurrence Analysis ===" << std::endl;
+    
+    // Handle special characters for display
+    std::string charDisplay;
+    if (targetChar == ' ') charDisplay = "SPACE";
+    else if (targetChar == '\t') charDisplay = "TAB";
+    else if (targetChar == '\n') charDisplay = "NEWLINE";
+    else if (targetChar >= 32 && targetChar <= 126) charDisplay = std::string(1, targetChar);
+    else charDisplay = "CTRL";
+    
+    double frequency = totalChars > 0 ? (static_cast<double>(occurrences) / totalChars) * 100.0 : 0.0;
+    
+    std::cout << "Target Character: " << charDisplay << " (ASCII: " << static_cast<int>(targetChar) << ")" << std::endl;
+    std::cout << "Total Characters Analyzed: " << totalChars << std::endl;
+    std::cout << "Occurrences Found: " << occurrences << std::endl;
+    std::cout << "Frequency: " << std::fixed << std::setprecision(6) << frequency << "%" << std::endl;
+    std::cout << "====================================" << std::endl;
+}
+
+/**
+ * Export results to CSV format
+ */
+void exportResultsCSV(char targetChar, size_t occurrences, size_t totalChars, 
+                     const std::vector<double>& executionTimes, const TestConfiguration& config,
+                     const std::string& filename = "serial_results.csv") {
+    std::ofstream file(filename);
+    if (!file.is_open()) {
+        std::cerr << "Error: Failed to create CSV file: " << filename << std::endl;
+        return;
+    }
+
+    // Calculate statistics
+    double totalTime = std::accumulate(executionTimes.begin(), executionTimes.end(), 0.0);
+    double avgTime = totalTime / executionTimes.size();
+    
+    double variance = 0;
+    for (double time : executionTimes) {
+        variance += (time - avgTime) * (time - avgTime);
+    }
+    double stdDev = std::sqrt(variance / executionTimes.size());
+    double minTime = *std::min_element(executionTimes.begin(), executionTimes.end());
+    double maxTime = *std::max_element(executionTimes.begin(), executionTimes.end());
+    
+    double avgThroughput = (config.stringLength / (avgTime / 1000.0)) / (1024.0 * 1024.0);
+    double avgCharsPerSec = totalChars / (avgTime / 1000.0);
+    double frequency = totalChars > 0 ? (static_cast<double>(occurrences) / totalChars) * 100.0 : 0.0;
+    
+    // Write metadata and summary
+    file << "# Serial Character Occurrence Counting Results\n";
+    file << "# Configuration\n";
+    file << "Implementation,Serial\n";
+    file << "TargetCharacter," << targetChar << "\n";
+    file << "TargetCharacterASCII," << static_cast<int>(targetChar) << "\n";
+    file << "StringLength," << config.stringLength << "\n";
+    file << "Alignment," << config.alignment << "\n";
+    file << "Repetitions," << config.repetitions << "\n";
+    file << "RandomSeed," << config.randomSeed << "\n";
+    file << "TotalCharacters," << totalChars << "\n";
+    file << "Occurrences," << occurrences << "\n";
+    file << "Frequency," << std::fixed << std::setprecision(6) << frequency << "\n";
+    file << "\n";
+    
+    // Performance summary
+    file << "# Performance Summary\n";
+    file << "Metric,Value,Unit\n";
+    file << "AvgExecutionTime," << avgTime << ",ms\n";
+    file << "StdDeviation," << stdDev << ",ms\n";
+    file << "MinExecutionTime," << minTime << ",ms\n";
+    file << "MaxExecutionTime," << maxTime << ",ms\n";
+    file << "AvgThroughput," << avgThroughput << ",MB/s\n";
+    file << "AvgCharsPerSecond," << avgCharsPerSec << ",chars/s\n";
+    file << "\n";
+    
+    // Individual execution times
+    file << "# Individual Execution Times\n";
+    file << "Run,ExecutionTime_ms,Throughput_MBps,CharsPerSecond\n";
+    for (size_t i = 0; i < executionTimes.size(); ++i) {
+        double throughput = (config.stringLength / (executionTimes[i] / 1000.0)) / (1024.0 * 1024.0);
+        double charsPerSec = totalChars / (executionTimes[i] / 1000.0);
+        file << (i + 1) << "," << executionTimes[i] << "," << throughput << "," << charsPerSec << "\n";
+    }
+    
+    file.close();
+    std::cout << "Results exported to: " << filename << std::endl;
+}
+
+/**
+ * Run performance analysis with given configuration
+ */
+void runPerformanceAnalysis(SerialCharacterCounter& counter, const TestConfiguration& config) {
+    std::cout << "\n=== Performance Analysis ===" << std::endl;
+    std::cout << "Implementation: " << counter.getImplementationName() << std::endl;
+    std::cout << "Target Character: '" << config.targetCharacter << "' (ASCII: " << static_cast<int>(config.targetCharacter) << ")" << std::endl;
+    std::cout << "String Length: " << config.stringLength << " bytes" << std::endl;
+    std::cout << "Memory Alignment: " << config.alignment << " bytes" << std::endl;
+    std::cout << "Repetitions: " << config.repetitions << std::endl;
+    std::cout << "Random Seed: " << config.randomSeed << std::endl;
+    
+    RandomStringGenerator generator(config.randomSeed);
+    
+    try {
+        // Generate aligned string with deterministic random characters
+        std::cout << "\nGenerating deterministic random string..." << std::endl;
+        void* aligned = generator.generateAlignedString(config.stringLength, config.alignment);
+        
+        std::cout << "Searching for character '" << config.targetCharacter << "'..." << std::endl;
+        
+        // Performance measurements
+        std::vector<double> executionTimes;
+        size_t totalOccurrences = 0;
+        
+        // Run multiple repetitions with same string
+        for (int rep = 0; rep < config.repetitions; ++rep) {
+            PerformanceMetrics metrics;
+            
+            size_t occurrences = counter.countCharacterOccurrences(
+                static_cast<char*>(aligned), config.stringLength, config.targetCharacter, metrics);
+            
+            executionTimes.push_back(metrics.executionTimeMs);
+            
+            // Store occurrences from first run (should be identical across runs)
+            if (rep == 0) {
+                totalOccurrences = occurrences;
+            }
+            
+            // Show progress for long tests
+            if (config.repetitions > 10 && (rep + 1) % (config.repetitions / 10) == 0) {
+                std::cout << "Progress: " << ((rep + 1) * 100 / config.repetitions) << "%" << std::endl;
+            }
+        }
+        
+        // Calculate performance statistics
+        double totalTime = std::accumulate(executionTimes.begin(), executionTimes.end(), 0.0);
+        double avgTime = totalTime / config.repetitions;
+        
+        // Calculate standard deviation
+        double variance = 0;
+        for (double time : executionTimes) {
+            variance += (time - avgTime) * (time - avgTime);
+        }
+        double stdDev = std::sqrt(variance / config.repetitions);
+        
+        // Find min/max times
+        double minTime = *std::min_element(executionTimes.begin(), executionTimes.end());
+        double maxTime = *std::max_element(executionTimes.begin(), executionTimes.end());
+        
+        // Calculate derived metrics
+        size_t totalChars = config.stringLength - 1; // Exclude null terminator
+        double avgThroughput = (config.stringLength / (avgTime / 1000.0)) / (1024.0 * 1024.0);
+        double avgCharsPerSec = totalChars / (avgTime / 1000.0);
+        
+        // Display results
+        displayCharacterOccurrences(config.targetCharacter, totalOccurrences, totalChars);
+        
+        std::cout << "\n=== Performance Results ===" << std::endl;
+        std::cout << std::fixed << std::setprecision(6);
+        std::cout << "Average Execution Time: " << avgTime << " ms" << std::endl;
+        std::cout << "Standard Deviation: " << stdDev << " ms" << std::endl;
+        std::cout << "Min Execution Time: " << minTime << " ms" << std::endl;
+        std::cout << "Max Execution Time: " << maxTime << " ms" << std::endl;
+        std::cout << "Average Throughput: " << avgThroughput << " MB/s" << std::endl;
+        std::cout << "Characters per Second: " << avgCharsPerSec << std::endl;
+        
+        // Memory alignment verification
+        std::cout << "\n=== Memory Alignment Verification ===" << std::endl;
+        uintptr_t address = reinterpret_cast<uintptr_t>(aligned);
+        std::cout << "Memory Address: 0x" << std::hex << address << std::dec << std::endl;
+        std::cout << "Alignment Check: " << (address % config.alignment == 0 ? "PASSED" : "FAILED") << std::endl;
+        std::cout << "Address modulo alignment: " << (address % config.alignment) << std::endl;
+        
+        // CSV output
+        if (config.exportCSV) {
+            std::cout << "\n=== CSV Export ===" << std::endl;
+            std::cout << "StringLength,Alignment,TargetChar,TotalChars,Occurrences,AvgTimeMs,StdDevMs,MinTimeMs,MaxTimeMs,ThroughputMBps,CharsPerSec" << std::endl;
+            std::cout << config.stringLength << "," << config.alignment << "," << config.targetCharacter << "," << totalChars << "," 
+                      << totalOccurrences << "," << avgTime << "," << stdDev << "," << minTime << "," << maxTime << "," 
+                      << avgThroughput << "," << avgCharsPerSec << std::endl;
+            
+            exportResultsCSV(config.targetCharacter, totalOccurrences, totalChars, executionTimes, config, "serial_results.csv");
+        }
+        
+        generator.freeAlignedString(aligned);
+        
+    } catch (const std::exception& e) {
+        std::cerr << "Error during performance analysis: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+int main() {
+    std::cout << "======================================================" << std::endl;
+    std::cout << "   Serial Character Occurrence Counting             " << std::endl;
+    std::cout << "   CE-4302 Arquitectura de Computadores II           " << std::endl;
+    std::cout << "======================================================" << std::endl;
+    
+    SerialCharacterCounter counter;
+    
+    try {
+        // Get user configuration
+        TestConfiguration config = getUserConfiguration();
+        validateConfiguration(config);
+        
+        // Run main performance analysis
+        runPerformanceAnalysis(counter, config);
+        
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+        return 1;
+    }
+    
+    std::cout << "\nSerial character occurrence counting completed successfully!" << std::endl;
+    
+    return 0;
+}
+
+
+================================================
+FILE: char_count_simd.cpp
+================================================
+// char_count_simd.cpp
+// CE-4302 Arquitectura de Computadores II
+
+#include "utils.h"
+#include <immintrin.h>
+#include <nmmintrin.h>
+#include <algorithm>  
+#include <fstream>   
+
+// Forward declarations
+void displayCharacterOccurrences(char targetChar, size_t occurrences, size_t totalChars);
+void exportResultsCSV(char targetChar, size_t occurrences, size_t totalChars, 
+                     const std::vector<double>& executionTimes, const TestConfiguration& config,
+                     const std::string& filename);
+
+/**
+ * SIMD implementation of character occurrence counter using SSE4.2 intrinsics
+ * Counts occurrences of a SPECIFIC character in the string
+ */
+class SIMDCharacterCounter : public CharacterCounterBase {
+public:
+    size_t countCharacterOccurrences(const char* str, size_t length, char targetChar,
+                                   PerformanceMetrics& metrics) override {
+        
+        auto startTime = std::chrono::high_resolution_clock::now();
+        
+        size_t totalOccurrences = countCharacterSIMD(str, length - 1, targetChar);
+       
+        auto endTime = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime);
+        
+        // Fill performance metrics
+        metrics.executionTimeMs = duration.count() / 1000000.0;
+        metrics.memoryUsedBytes = length;
+        metrics.stringLength = length;
+        metrics.totalCharacters = length - 1;
+        metrics.targetCharacter = targetChar;
+        metrics.occurrences = totalOccurrences;
+        
+        return totalOccurrences;
+    }
+    
+    std::string getImplementationName() const override {
+        return "SIMD-SSE4.2";
+    }
+
+private:
+    /**
+     * SIMD implementation to count occurrences of a specific character
+     * Based on the workshop requirements using SSE4.2 intrinsics
+     */
+    size_t countCharacterSIMD(const char* str, size_t length, char targetChar) {
+        size_t total = 0;
+        size_t i = 0;
+        
+        // Broadcast the target character to all positions in a 128-bit vector (16 bytes)
+        // This implements the intrinsic from point b) of the workshop
+        __m128i vector_char = _mm_set1_epi8(targetChar);
+
+        // Process 16 bytes at a time using SIMD
+        for (; i <= length - 16; i += 16) {
+            // Load 16 bytes from string (handles unaligned data as required)
+            __m128i string_block = _mm_loadu_si128(reinterpret_cast<const __m128i*>(str + i));
+            
+            // Compare each byte with the target character
+            // This implements the intrinsic from point c) of the workshop
+            __m128i comparison_result = _mm_cmpeq_epi8(string_block, vector_char);
+            
+            // Create a bitmask from the comparison results
+            // This implements the get_mask() function mentioned in the workshop
+            int mask = _mm_movemask_epi8(comparison_result);
+            
+            // Count the number of set bits (1s) in the mask
+            // This implements the count_ones() function mentioned in the workshop
+            total += _mm_popcnt_u32(static_cast<unsigned int>(mask));
+        }
+
+        // Handle remaining bytes (less than 16) - "safe" handling as required
+        // This ensures we process all characters even when length is not multiple of 16
+        for (; i < length; ++i) {
+            if (str[i] == targetChar) {
+                ++total;
+            }
+        }
+
+        return total;
+    }
+};
+
+/**
+ * Display character occurrence results in a readable format
+ */
+void displayCharacterOccurrences(char targetChar, size_t occurrences, size_t totalChars) {
+    std::cout << "\n=== Character Occurrence Analysis ===" << std::endl;
+    
+    // Handle special characters for display
+    std::string charDisplay;
+    if (targetChar == ' ') charDisplay = "SPACE";
+    else if (targetChar == '\t') charDisplay = "TAB";
+    else if (targetChar == '\n') charDisplay = "NEWLINE";
+    else if (targetChar >= 32 && targetChar <= 126) charDisplay = std::string(1, targetChar);
+    else charDisplay = "CTRL";
+    
+    double frequency = totalChars > 0 ? (static_cast<double>(occurrences) / totalChars) * 100.0 : 0.0;
+    
+    std::cout << "Target Character: " << charDisplay << " (ASCII: " << static_cast<int>(targetChar) << ")" << std::endl;
+    std::cout << "Total Characters Analyzed: " << totalChars << std::endl;
+    std::cout << "Occurrences Found: " << occurrences << std::endl;
+    std::cout << "Frequency: " << std::fixed << std::setprecision(6) << frequency << "%" << std::endl;
+    std::cout << "====================================" << std::endl;
+}
+
+/**
+ * Export results to CSV format
+ */
+void exportResultsCSV(char targetChar, size_t occurrences, size_t totalChars, 
+                     const std::vector<double>& executionTimes, const TestConfiguration& config,
+                     const std::string& filename = "simd_results.csv") {
+    std::ofstream file(filename);
+    if (!file.is_open()) {
+        std::cerr << "Error: Failed to create CSV file: " << filename << std::endl;
+        return;
+    }
+
+    // Calculate statistics
+    double totalTime = std::accumulate(executionTimes.begin(), executionTimes.end(), 0.0);
+    double avgTime = totalTime / executionTimes.size();
+    
+    double variance = 0;
+    for (double time : executionTimes) {
+        variance += (time - avgTime) * (time - avgTime);
+    }
+    double stdDev = std::sqrt(variance / executionTimes.size());
+    double minTime = *std::min_element(executionTimes.begin(), executionTimes.end());
+    double maxTime = *std::max_element(executionTimes.begin(), executionTimes.end());
+    
+    double avgThroughput = (config.stringLength / (avgTime / 1000.0)) / (1024.0 * 1024.0);
+    double avgCharsPerSec = totalChars / (avgTime / 1000.0);
+    double frequency = totalChars > 0 ? (static_cast<double>(occurrences) / totalChars) * 100.0 : 0.0;
+    
+    // Write metadata and summary
+    file << "# SIMD Character Occurrence Counting Results\n";
+    file << "# Configuration\n";
+    file << "Implementation,SIMD-SSE4.2\n";
+    file << "TargetCharacter," << targetChar << "\n";
+    file << "TargetCharacterASCII," << static_cast<int>(targetChar) << "\n";
+    file << "StringLength," << config.stringLength << "\n";
+    file << "Alignment," << config.alignment << "\n";
+    file << "Repetitions," << config.repetitions << "\n";
+    file << "RandomSeed," << config.randomSeed << "\n";
+    file << "TotalCharacters," << totalChars << "\n";
+    file << "Occurrences," << occurrences << "\n";
+    file << "Frequency," << std::fixed << std::setprecision(6) << frequency << "\n";
+    file << "\n";
+    
+    // Performance summary
+    file << "# Performance Summary\n";
+    file << "Metric,Value,Unit\n";
+    file << "AvgExecutionTime," << avgTime << ",ms\n";
+    file << "StdDeviation," << stdDev << ",ms\n";
+    file << "MinExecutionTime," << minTime << ",ms\n";
+    file << "MaxExecutionTime," << maxTime << ",ms\n";
+    file << "AvgThroughput," << avgThroughput << ",MB/s\n";
+    file << "AvgCharsPerSecond," << avgCharsPerSec << ",chars/s\n";
+    file << "\n";
+    
+    // Individual execution times
+    file << "# Individual Execution Times\n";
+    file << "Run,ExecutionTime_ms,Throughput_MBps,CharsPerSecond\n";
+    for (size_t i = 0; i < executionTimes.size(); ++i) {
+        double throughput = (config.stringLength / (executionTimes[i] / 1000.0)) / (1024.0 * 1024.0);
+        double charsPerSec = totalChars / (executionTimes[i] / 1000.0);
+        file << (i + 1) << "," << executionTimes[i] << "," << throughput << "," << charsPerSec << "\n";
+    }
+    
+    file.close();
+    std::cout << "Results exported to: " << filename << std::endl;
+}
+
+/**
+ * Run performance analysis with given configuration
+ */
+void runPerformanceAnalysis(SIMDCharacterCounter& counter, const TestConfiguration& config) {
+    std::cout << "\n=== Performance Analysis ===" << std::endl;
+    std::cout << "Implementation: " << counter.getImplementationName() << std::endl;
+    std::cout << "Target Character: '" << config.targetCharacter << "' (ASCII: " << static_cast<int>(config.targetCharacter) << ")" << std::endl;
+    std::cout << "String Length: " << config.stringLength << " bytes" << std::endl;
+    std::cout << "Memory Alignment: " << config.alignment << " bytes" << std::endl;
+    std::cout << "Repetitions: " << config.repetitions << std::endl;
+    std::cout << "Random Seed: " << config.randomSeed << std::endl;
+    
+    RandomStringGenerator generator(config.randomSeed);
+    
+    try {
+        // Generate aligned string with deterministic random characters
+        std::cout << "\nGenerating deterministic random string..." << std::endl;
+        void* aligned = generator.generateAlignedString(config.stringLength, config.alignment);
+        
+        std::cout << "Searching for character '" << config.targetCharacter << "' using SIMD..." << std::endl;
+        
+        // Performance measurements
+        std::vector<double> executionTimes;
+        size_t totalOccurrences = 0;
+        
+        // Run multiple repetitions with same string
+        for (int rep = 0; rep < config.repetitions; ++rep) {
+            PerformanceMetrics metrics;
+            
+            size_t occurrences = counter.countCharacterOccurrences(
+                static_cast<char*>(aligned), config.stringLength, config.targetCharacter, metrics);
+            
+            executionTimes.push_back(metrics.executionTimeMs);
+            
+            // Store occurrences from first run (should be identical across runs)
+            if (rep == 0) {
+                totalOccurrences = occurrences;
+            }
+            
+            // Show progress for long tests
+            if (config.repetitions > 10 && (rep + 1) % (config.repetitions / 10) == 0) {
+                std::cout << "Progress: " << ((rep + 1) * 100 / config.repetitions) << "%" << std::endl;
+            }
+        }
+        
+        // Calculate performance statistics
+        double totalTime = std::accumulate(executionTimes.begin(), executionTimes.end(), 0.0);
+        double avgTime = totalTime / config.repetitions;
+        
+        // Calculate standard deviation
+        double variance = 0;
+        for (double time : executionTimes) {
+            variance += (time - avgTime) * (time - avgTime);
+        }
+        double stdDev = std::sqrt(variance / config.repetitions);
+        
+        // Find min/max times
+        double minTime = *std::min_element(executionTimes.begin(), executionTimes.end());
+        double maxTime = *std::max_element(executionTimes.begin(), executionTimes.end());
+        
+        // Calculate derived metrics
+        size_t totalChars = config.stringLength - 1; // Exclude null terminator
+        double avgThroughput = (config.stringLength / (avgTime / 1000.0)) / (1024.0 * 1024.0);
+        double avgCharsPerSec = totalChars / (avgTime / 1000.0);
+        
+        // Display results
+        displayCharacterOccurrences(config.targetCharacter, totalOccurrences, totalChars);
+        
+        std::cout << "\n=== Performance Results ===" << std::endl;
+        std::cout << std::fixed << std::setprecision(6);
+        std::cout << "Average Execution Time: " << avgTime << " ms" << std::endl;
+        std::cout << "Standard Deviation: " << stdDev << " ms" << std::endl;
+        std::cout << "Min Execution Time: " << minTime << " ms" << std::endl;
+        std::cout << "Max Execution Time: " << maxTime << " ms" << std::endl;
+        std::cout << "Average Throughput: " << avgThroughput << " MB/s" << std::endl;
+        std::cout << "Characters per Second: " << avgCharsPerSec << std::endl;
+        
+        // Memory alignment verification
+        std::cout << "\n=== Memory Alignment Verification ===" << std::endl;
+        uintptr_t address = reinterpret_cast<uintptr_t>(aligned);
+        std::cout << "Memory Address: 0x" << std::hex << address << std::dec << std::endl;
+        std::cout << "Alignment Check: " << (address % config.alignment == 0 ? "PASSED" : "FAILED") << std::endl;
+        std::cout << "Address modulo alignment: " << (address % config.alignment) << std::endl;
+        
+        // CSV output
+        if (config.exportCSV) {
+            std::cout << "\n=== CSV Export ===" << std::endl;
+            std::cout << "StringLength,Alignment,TargetChar,TotalChars,Occurrences,AvgTimeMs,StdDevMs,MinTimeMs,MaxTimeMs,ThroughputMBps,CharsPerSec" << std::endl;
+            std::cout << config.stringLength << "," << config.alignment << "," << config.targetCharacter << "," << totalChars << "," 
+                      << totalOccurrences << "," << avgTime << "," << stdDev << "," << minTime << "," << maxTime << "," 
+                      << avgThroughput << "," << avgCharsPerSec << std::endl;
+            
+            exportResultsCSV(config.targetCharacter, totalOccurrences, totalChars, executionTimes, config, "simd_results.csv");
+        }
+        
+        generator.freeAlignedString(aligned);
+        
+    } catch (const std::exception& e) {
+        std::cerr << "Error during performance analysis: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+int main() {
+    std::cout << "======================================================" << std::endl;
+    std::cout << "   SIMD Character Occurrence Counting                " << std::endl;
+    std::cout << "   CE-4302 Arquitectura de Computadores II           " << std::endl;
+    std::cout << "======================================================" << std::endl;
+    
+    SIMDCharacterCounter counter;
+    
+    try {
+        // Get user configuration
+        TestConfiguration config = getUserConfiguration();
+        validateConfiguration(config);
+        
+        // Run main performance analysis
+        runPerformanceAnalysis(counter, config);
+        
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+        return 1;
+    }
+    
+    std::cout << "\nSerial character occurrence counting completed successfully!" << std::endl;
+    
+    return 0;
+}
+
+
+
+================================================
+FILE: comparison_plot.py
+================================================
+#!/usr/bin/env python3
+"""
+Performance comparison plot between SIMD and Serial implementations
+CE-4302 Arquitectura de Computadores II - Taller 02
+
+16, 32, 64, 256, 512, 1024, 2048, 4096 bytes with single sample per test.
+"""
+
+import subprocess
+import matplotlib.pyplot as plt
+import numpy as np
+import os
+import sys
+from typing import Dict, List
+
+class PerformanceComparison:
+    def __init__(self, serial_executable="./char_count_serial", simd_executable="./char_count_simd"):
+        self.serial_executable = serial_executable
+        self.simd_executable = simd_executable
+        self.results = {
+            'Serial': {'sizes': [], 'times': [], 'throughputs': []},
+            'SIMD': {'sizes': [], 'times': [], 'throughputs': []}
+        }
+        
+    def run_single_test(self, executable: str, string_length: int, alignment: int = 16, 
+                   target_char: str = 'a') -> Dict:
+        """Run a single performance test with one repetition"""
+        
+        # Single repetition as requested
+        repetitions = 1
+        input_data = f"{target_char}\n{string_length}\n{alignment}\n{repetitions}\nn\ny\n"
+        
+        try:
+            process = subprocess.Popen(
+                [executable],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1  # Añadir bufsize para evitar el error
+            )
+            
+            stdout, stderr = process.communicate(input=input_data, timeout=30)
+            
+            if process.returncode != 0:
+                print(f"Error running {executable} (return code {process.returncode}): {stderr}")
+                return None
+                
+            # Parse the CSV output from stdout
+            lines = stdout.strip().split('\n')
+            
+            for line in lines:
+                if 'StringLength,Alignment,TargetChar,TotalChars,Occurrences,AvgTimeMs' in line:
+                    # Next line should be the data
+                    idx = lines.index(line)
+                    if idx + 1 < len(lines):
+                        csv_line = lines[idx + 1]
+                        parts = csv_line.split(',')
+                        
+                        return {
+                            'string_length': int(parts[0]),
+                            'avg_time_ms': float(parts[5]),
+                            'throughput_mbps': float(parts[9])
+                        }
+            
+            print(f"Could not parse output from {executable}")
+            return None
+            
+        except subprocess.TimeoutExpired:
+            print(f"Timeout running {executable}")
+            process.kill()
+            return None
+        except Exception as e:
+            print(f"Error running {executable}: {e}")
+            return None
+    
+    def run_comparison_tests(self, string_sizes: List[int], target_char: str = ';', alignment: int = 16):
+        """Run comparison tests for specified string sizes"""
+        
+        print("=== Performance Comparison: SIMD vs Serial ===")
+        print(f"String sizes: {string_sizes}")
+        print(f"Target character: '{target_char}'")
+        print(f"Memory alignment: {alignment} bytes")
+        print(f"Repetitions per test: 1 (single sample)\n")
+        
+        for size in string_sizes:
+            print(f"Testing string length: {size} bytes")
+            
+            # Test Serial implementation
+            print("  Running Serial implementation...")
+            serial_result = self.run_single_test(self.serial_executable, size, alignment, target_char)
+            
+            if serial_result:
+                self.results['Serial']['sizes'].append(size)
+                self.results['Serial']['times'].append(serial_result['avg_time_ms'])
+                self.results['Serial']['throughputs'].append(serial_result['throughput_mbps'])
+                print(f"    Serial: {serial_result['avg_time_ms']:.3f} ms, {serial_result['throughput_mbps']:.1f} MB/s")
+            else:
+                print("    Serial: FAILED")
+            
+            # Test SIMD implementation
+            print("  Running SIMD implementation...")
+            simd_result = self.run_single_test(self.simd_executable, size, alignment, target_char)
+            
+            if simd_result:
+                self.results['SIMD']['sizes'].append(size)
+                self.results['SIMD']['times'].append(simd_result['avg_time_ms'])
+                self.results['SIMD']['throughputs'].append(simd_result['throughput_mbps'])
+                print(f"    SIMD:   {simd_result['avg_time_ms']:.3f} ms, {simd_result['throughput_mbps']:.1f} MB/s")
+                
+                # Calculate speedup if both results available
+                if serial_result:
+                    speedup = serial_result['avg_time_ms'] / simd_result['avg_time_ms']
+                    print(f"    Speedup: {speedup:.2f}x")
+            else:
+                print("    SIMD: FAILED")
+            print()
+        # Validación cruzada para el mayor tamaño
+        # Validación cruzada para el mayor tamaño
+        max_size = max(string_sizes)
+        print(f"\n=== Cross-validation for size: {max_size} ===")
+
+        # Obtener la misma cadena para ambas implementaciones
+        input_data = f"{target_char}\n{max_size}\n{alignment}\n1\nn\nn\n"
+
+        # Ejecutar serial y capturar resultado
+        serial_count = None
+        try:
+            process = subprocess.Popen(
+                [self.serial_executable],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            stdout, stderr = process.communicate(input=input_data, timeout=30)
+            
+            if process.returncode == 0:
+                # Parsear el conteo serial del output
+                for line in stdout.split('\n'):
+                    if "Occurrences Found:" in line:
+                        serial_count = int(line.split(':')[1].strip())
+                        break
+        except Exception as e:
+            print(f"Error running serial validation: {e}")
+
+        # Ejecutar SIMD con misma cadena
+        simd_count = None
+        try:
+            process = subprocess.Popen(
+                [self.simd_executable],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            stdout, stderr = process.communicate(input=input_data, timeout=30)
+            
+            if process.returncode == 0:
+                # Parsear el conteo SIMD del output
+                for line in stdout.split('\n'):
+                    if "Occurrences Found:" in line:
+                        simd_count = int(line.split(':')[1].strip())
+                        break
+        except Exception as e:
+            print(f"Error running SIMD validation: {e}")
+
+        if serial_count is not None and simd_count is not None:
+            if serial_count != simd_count:
+                print(f"VALIDATION FAILED! Serial: {serial_count}, SIMD: {simd_count}")
+            else:
+                print(f"Validation passed! Results match: {serial_count} occurrences")
+        else:
+            print("Validation incomplete - could not get results from both implementations")
+
+            
+    
+    def create_performance_plots(self, output_dir: str = "comparison_plots"):
+        """Create performance comparison plots"""
+        
+        if not self.results['Serial']['sizes'] or not self.results['SIMD']['sizes']:
+            print("Insufficient data to create plots")
+            return
+        
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Create execution time comparison plot
+        self._create_execution_time_plot(output_dir)
+        
+        # Create throughput comparison plot
+        self._create_throughput_plot(output_dir)
+        
+        # Create speedup plot
+        self._create_speedup_plot(output_dir)
+        
+        print(f"All plots saved in: {output_dir}")
+    
+    def _create_execution_time_plot(self, output_dir: str):
+        """Create execution time comparison plot"""
+        
+        plt.figure(figsize=(12, 8))
+        
+        # Plot Serial results
+        serial_sizes = self.results['Serial']['sizes']
+        serial_times = self.results['Serial']['times']
+        plt.loglog(serial_sizes, serial_times, 'b-o', label='Serial Implementation', 
+                  linewidth=3, markersize=8, markerfacecolor='lightblue', markeredgecolor='blue')
+        
+        # Plot SIMD results
+        simd_sizes = self.results['SIMD']['sizes']
+        simd_times = self.results['SIMD']['times']
+        plt.loglog(simd_sizes, simd_times, 'r-s', label='SIMD Implementation (SSE4.2)', 
+                  linewidth=3, markersize=8, markerfacecolor='lightcoral', markeredgecolor='red')
+        
+        plt.xlabel('Input Vector Size (bytes)', fontsize=14, fontweight='bold')
+        plt.ylabel('Execution Time (ms)', fontsize=14, fontweight='bold')
+        plt.title('Performance Comparison: SIMD vs Serial Implementation\n(16-byte Aligned Data)', 
+                 fontsize=16, fontweight='bold')
+        plt.legend(fontsize=12, loc='upper left')
+        plt.grid(True, alpha=0.3, linestyle='--')
+        
+        # Customize the plot to look more professional
+        plt.gca().tick_params(labelsize=12)
+        plt.gca().set_facecolor('#f8f9fa')
+        
+        # Add value annotations
+        for i, (size, time) in enumerate(zip(serial_sizes, serial_times)):
+            plt.annotate(f'{time:.3f}ms', 
+                        xy=(size, time), xytext=(5, 10), 
+                        textcoords='offset points', fontsize=9, 
+                        ha='left', alpha=0.8, color='blue')
+        
+        for i, (size, time) in enumerate(zip(simd_sizes, simd_times)):
+            plt.annotate(f'{time:.3f}ms', 
+                        xy=(size, time), xytext=(5, -15), 
+                        textcoords='offset points', fontsize=9, 
+                        ha='left', alpha=0.8, color='red')
+        
+        plt.tight_layout()
+        plt.savefig(f"{output_dir}/execution_time_comparison.png", dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"Execution time plot saved: {output_dir}/execution_time_comparison.png")
+    
+    def _create_throughput_plot(self, output_dir: str):
+        """Create throughput comparison plot"""
+        
+        plt.figure(figsize=(12, 8))
+        
+        # Plot throughput results
+        serial_sizes = self.results['Serial']['sizes']
+        serial_throughputs = self.results['Serial']['throughputs']
+        simd_sizes = self.results['SIMD']['sizes']
+        simd_throughputs = self.results['SIMD']['throughputs']
+        
+        plt.semilogx(serial_sizes, serial_throughputs, 'b-o', label='Serial Implementation', 
+                    linewidth=3, markersize=8, markerfacecolor='lightblue', markeredgecolor='blue')
+        plt.semilogx(simd_sizes, simd_throughputs, 'r-s', label='SIMD Implementation (SSE4.2)', 
+                    linewidth=3, markersize=8, markerfacecolor='lightcoral', markeredgecolor='red')
+        
+        plt.xlabel('Input Vector Size (bytes)', fontsize=14, fontweight='bold')
+        plt.ylabel('Throughput (MB/s)', fontsize=14, fontweight='bold')
+        plt.title('Throughput Comparison: SIMD vs Serial Implementation\n(16-byte Aligned Data)', 
+                 fontsize=16, fontweight='bold')
+        plt.legend(fontsize=12, loc='lower right')
+        plt.grid(True, alpha=0.3, linestyle='--')
+        
+        plt.gca().tick_params(labelsize=12)
+        plt.gca().set_facecolor('#f8f9fa')
+        
+        plt.tight_layout()
+        plt.savefig(f"{output_dir}/throughput_comparison.png", dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"Throughput plot saved: {output_dir}/throughput_comparison.png")
+    
+    def _create_speedup_plot(self, output_dir: str):
+        """Create speedup comparison plot"""
+        
+        # Calculate speedups where both implementations have data
+        speedup_sizes = []
+        speedups = []
+        
+        serial_data = dict(zip(self.results['Serial']['sizes'], self.results['Serial']['times']))
+        simd_data = dict(zip(self.results['SIMD']['sizes'], self.results['SIMD']['times']))
+        
+        for size in serial_data:
+            if size in simd_data:
+                speedup = serial_data[size] / simd_data[size]
+                speedup_sizes.append(size)
+                speedups.append(speedup)
+        
+        if not speedups:
+            print("No speedup data available")
+            return
+        
+        plt.figure(figsize=(12, 8))
+        
+        # Create bar plot for speedup
+        x_pos = np.arange(len(speedup_sizes))
+        bars = plt.bar(x_pos, speedups, color='green', alpha=0.7, edgecolor='darkgreen', linewidth=2)
+        
+        # Add horizontal line at y=1 (no speedup)
+        plt.axhline(y=1, color='black', linestyle='--', alpha=0.8, linewidth=2, label='No speedup')
+        
+        # Customize the plot
+        plt.xlabel('Input Vector Size (bytes)', fontsize=14, fontweight='bold')
+        plt.ylabel('Speedup (Serial Time / SIMD Time)', fontsize=14, fontweight='bold')
+        plt.title('SIMD Speedup over Serial Implementation\n(Single Sample Measurements)', 
+                 fontsize=16, fontweight='bold')
+        plt.xticks(x_pos, [f'{size}' for size in speedup_sizes], fontsize=12)
+        plt.gca().tick_params(labelsize=12)
+        plt.grid(True, alpha=0.3, linestyle='--', axis='y')
+        plt.legend(fontsize=12)
+        
+        # Add value labels on bars
+        for i, (bar, speedup) in enumerate(zip(bars, speedups)):
+            height = bar.get_height()
+            plt.text(bar.get_x() + bar.get_width()/2., height + 0.05,
+                    f'{speedup:.2f}x', ha='center', va='bottom', fontsize=11, fontweight='bold')
+        
+        plt.gca().set_facecolor('#f8f9fa')
+        plt.tight_layout()
+        plt.savefig(f"{output_dir}/speedup_comparison.png", dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"Speedup plot saved: {output_dir}/speedup_comparison.png")
+    
+    def print_summary_table(self):
+        """Print a summary table of results"""
+        
+        print("\n" + "="*80)
+        print("PERFORMANCE SUMMARY TABLE")
+        print("="*80)
+        print(f"{'Size (bytes)':<12} {'Serial (ms)':<12} {'SIMD (ms)':<12} {'Speedup':<10} {'SIMD Throughput':<15}")
+        print("-"*80)
+        
+        serial_data = dict(zip(self.results['Serial']['sizes'], self.results['Serial']['times']))
+        simd_data = dict(zip(self.results['SIMD']['sizes'], self.results['SIMD']['times']))
+        simd_throughput = dict(zip(self.results['SIMD']['sizes'], self.results['SIMD']['throughputs']))
+        
+        for size in sorted(set(serial_data.keys()) & set(simd_data.keys())):
+            serial_time = serial_data[size]
+            simd_time = simd_data[size]
+            speedup = serial_time / simd_time
+            throughput = simd_throughput[size]
+            
+            print(f"{size:<12} {serial_time:<12.3f} {simd_time:<12.3f} {speedup:<10.2f} {throughput:<15.1f}")
+        
+        print("="*80)
+
+def main():
+    # Tamaños válidos (mínimo 16 bytes según tu implementación)
+    STRING_SIZES = [16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384]
+    ALIGNMENTS = [16, 64]
+    TARGET_CHAR = ';'  # Definir la variable que faltaba
+    
+    # Check if executables exist
+    if not os.path.exists("./char_count_serial"):
+        print("Error: ./char_count_serial not found. Please compile first with 'make'")
+        sys.exit(1)
+    
+    if not os.path.exists("./char_count_simd"):
+        print("Error: ./char_count_simd not found. Please compile first with 'make'")
+        sys.exit(1)
+    
+    for alignment in ALIGNMENTS:
+        print(f"\n=== Testing with alignment: {alignment} bytes ===")
+        comparison = PerformanceComparison()
+        comparison.run_comparison_tests(STRING_SIZES, TARGET_CHAR, alignment)
+        comparison.create_performance_plots(f"comparison_plots_align{alignment}")
+        comparison.print_summary_table()
+    
+    print("\nPerformance comparison completed!")
+
+
+if __name__ == "__main__":
+    main()
+
+
+
+================================================
+FILE: Makefile
+================================================
+# CE-4302 Arquitectura de Computadores II
+# Taller 02 - SIMD Extensions and Intrinsics
+# Makefile for Serial and SIMD Implementations
+
+CXX = g++
+CXXFLAGS = -std=c++14 -O3 -Wall -Wextra -march=native -msse4.2
+LDFLAGS = 
+TARGET_SERIAL = char_count_serial
+TARGET_SIMD = char_count_simd
+
+# Source files
+COMMON_SRC = utils.cpp
+SERIAL_SRC = char_count_serial.cpp
+SIMD_SRC = char_count_simd.cpp
+
+# Header files
+HEADERS = utils.h
+
+# Default target - builds both implementations
+all: $(TARGET_SERIAL) $(TARGET_SIMD)
+
+# Serial implementation
+$(TARGET_SERIAL): $(SERIAL_SRC) $(COMMON_SRC) $(HEADERS)
+	$(CXX) $(CXXFLAGS) -o $@ $(SERIAL_SRC) $(COMMON_SRC) $(LDFLAGS)
+
+# SIMD implementation (requires SSE4.2)
+$(TARGET_SIMD): $(SIMD_SRC) $(COMMON_SRC) $(HEADERS)
+	$(CXX) $(CXXFLAGS) -o $@ $(SIMD_SRC) $(COMMON_SRC) $(LDFLAGS)
+
+# Debug versions
+debug: CXXFLAGS = -std=c++14 -g -Wall -Wextra -DDEBUG
+debug: $(TARGET_SERIAL) $(TARGET_SIMD)
+
+# Performance optimized versions
+performance: CXXFLAGS = -std=c++14 -O3 -Wall -Wextra -march=native -mtune=native -msse4.2 -DNDEBUG
+performance: $(TARGET_SERIAL) $(TARGET_SIMD)
+
+
+# Clean targets
+clean:
+	rm -f $(TARGET_SERIAL) $(TARGET_SIMD) *.o *.csv
+
+distclean: clean
+	rm -f *.log *.csv
+
+
+
+.PHONY: all debug clean distclean
+
+
+
+================================================
+FILE: utils.cpp
+================================================
+#include "utils.h"
+#include <algorithm>
+#include <limits>
+
+// PerformanceMetrics implementation
+void PerformanceMetrics::print() const {
+    std::cout << std::fixed << std::setprecision(6);
+    std::cout << "=== Performance Metrics ===" << std::endl;
+    std::cout << "Target Character: '" << targetCharacter << "' (ASCII: " << static_cast<int>(targetCharacter) << ")" << std::endl;
+    std::cout << "String Length: " << stringLength << " bytes" << std::endl;
+    std::cout << "Memory Alignment: " << alignment << " bytes" << std::endl;
+    std::cout << "Total Characters: " << totalCharacters << std::endl;
+    std::cout << "Occurrences Found: " << occurrences << std::endl;
+    std::cout << "Execution Time: " << executionTimeMs << " ms" << std::endl;
+    std::cout << "Memory Used: " << memoryUsedBytes << " bytes" << std::endl;
+    std::cout << "Throughput: " << getThroughputMBps() << " MB/s" << std::endl;
+    std::cout << "Characters/sec: " << getCharactersPerSecond() << std::endl;
+    std::cout << "=========================" << std::endl;
+}
+
+void PerformanceMetrics::printCSVHeader() const {
+    std::cout << "StringLength,Alignment,TargetChar,TotalChars,Occurrences,ExecutionTimeMs,ThroughputMBps,CharsPerSecond" << std::endl;
+}
+
+void PerformanceMetrics::printCSVRow() const {
+    std::cout << std::fixed << std::setprecision(6);
+    std::cout << stringLength << "," << alignment << "," << targetCharacter << "," << totalCharacters << "," 
+              << occurrences << "," << executionTimeMs << "," 
+              << getThroughputMBps() << "," << getCharactersPerSecond() << std::endl;
+}
+
+double PerformanceMetrics::getThroughputMBps() const {
+    if (executionTimeMs <= 0) return 0.0;
+    return (stringLength / (executionTimeMs / 1000.0)) / (1024.0 * 1024.0);
+}
+
+double PerformanceMetrics::getCharactersPerSecond() const {
+    if (executionTimeMs <= 0) return 0.0;
+    return totalCharacters / (executionTimeMs / 1000.0);
+}
+
+// RandomStringGenerator implementation
+RandomStringGenerator::RandomStringGenerator(uint32_t seed) : seed(seed), rng(seed) {}
+
+RandomStringGenerator::~RandomStringGenerator() {
+    // Clean up any remaining allocated memory
+    for (auto& pair : originalPointers) {
+        free(pair.second);
+    }
+}
+
+void RandomStringGenerator::resetSeed() {
+    rng.seed(seed);
+}
+
+void* RandomStringGenerator::generateAlignedString(size_t length, size_t alignment) {
+    if (!isPowerOfTwo(alignment)) {
+        throw std::invalid_argument("Alignment must be power of 2");
+    }
+    
+    if (length == 0) {
+        throw std::invalid_argument("Length must be greater than 0");
+    }
+
+    // Calculate total size needed (string + alignment padding)
+    size_t totalSize = length + alignment - 1;
+    
+    // Allocate raw memory
+    void* rawMemory = malloc(totalSize);
+    if (!rawMemory) {
+        throw std::bad_alloc();
+    }
+    
+    // Align the memory address
+    void* alignedMemory = align(alignment, length, rawMemory, totalSize);
+    
+    if (!alignedMemory) {
+        free(rawMemory);
+        throw std::runtime_error("Failed to align memory");
+    }
+    
+    // Generate random UTF-8 string in the aligned memory
+    generateRandomUTF8(static_cast<char*>(alignedMemory), length);
+    
+    // Store original pointer for proper deallocation
+    originalPointers[alignedMemory] = rawMemory;
+    
+    return alignedMemory;
+}
+
+void RandomStringGenerator::freeAlignedString(void* alignedPtr) {
+    auto it = originalPointers.find(alignedPtr);
+    if (it != originalPointers.end()) {
+        free(it->second);
+        originalPointers.erase(it);
+    }
+}
+
+void* RandomStringGenerator::align(size_t alignment, size_t size, void* ptr, size_t space) {
+    return std::align(alignment, size, ptr, space);
+}
+
+void RandomStringGenerator::generateRandomUTF8(char* buffer, size_t length) {
+    std::uniform_int_distribution<int> dist1(0x20, 0x7E); // ASCII básico
+    std::uniform_int_distribution<int> dist2(0xC2, 0xF4); // Inicios de secuencia UTF-8
+    
+    for (size_t i = 0; i < length - 1; ) {
+        if (dist1(rng) % 4 == 0) { // 25% de probabilidad de caracter no ASCII
+            int lead = dist2(rng);
+            int charSize = 1;
+            
+            if (lead < 0xE0) charSize = 2;
+            else if (lead < 0xF0) charSize = 3;
+            else charSize = 4;
+            
+            if (i + charSize >= length - 1) break;
+            
+            buffer[i++] = static_cast<char>(lead);
+            for (int j = 1; j < charSize; j++) {
+                buffer[i++] = static_cast<char>(0x80 + (dist1(rng) % 0x40));
+            }
+        } else {
+            buffer[i++] = static_cast<char>(dist1(rng));
+        }
+    }
+    buffer[length - 1] = '\0';
+}
+
+// Utility functions
+TestConfiguration getUserConfiguration() {
+    TestConfiguration config;
+    
+    std::cout << "\n=== Character Occurrence Counting Configuration ===" << std::endl;
+    
+    // Get target character
+    std::cout << "Enter the character to search for: ";
+    std::cin >> config.targetCharacter;
+    
+    if (std::cin.fail()) {
+        std::cin.clear();
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        throw std::invalid_argument("Invalid character input");
+    }
+    
+    // Get string length
+    do {
+        std::cout << "Enter string length (bytes, minimum 16): ";
+        std::cin >> config.stringLength;
+        
+        if (std::cin.fail() || config.stringLength < 16) {
+            std::cin.clear();
+            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+            std::cout << "Invalid input. Please enter a number >= 16." << std::endl;
+            continue;
+        }
+        break;
+    } while (true);
+    
+    // Get memory alignment
+    do {
+        std::cout << "Enter memory alignment (bytes, must be power of 2: 1, 2, 4, 8, 16, 32, 64): ";
+        std::cin >> config.alignment;
+        
+        if (std::cin.fail() || !isPowerOfTwo(config.alignment)) {
+            std::cin.clear();
+            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+            std::cout << "Invalid input. Alignment must be a power of 2." << std::endl;
+            continue;
+        }
+        break;
+    } while (true);
+    
+    // Get number of repetitions
+    do {
+        std::cout << "Enter number of repetitions for averaging (1-1000): ";
+        std::cin >> config.repetitions;
+        
+        if (std::cin.fail() || config.repetitions < 1 || config.repetitions > 1000) {
+            std::cin.clear();
+            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+            std::cout << "Invalid input. Must be between 1 and 1000." << std::endl;
+            continue;
+        }
+        break;
+    } while (true);
+    
+    // Ask for detailed results
+    char showDetailed;
+    std::cout << "Show detailed results? (y/n): ";
+    std::cin >> showDetailed;
+    config.showDetailedResults = (showDetailed == 'y' || showDetailed == 'Y');
+    
+    // Ask for CSV export
+    char exportCSV;
+    std::cout << "Export results to CSV format? (y/n): ";
+    std::cin >> exportCSV;
+    config.exportCSV = (exportCSV == 'y' || exportCSV == 'Y');
+    
+    // Set deterministic seed for reproducible results
+    config.randomSeed = 42;
+    
+    std::cout << "Using deterministic seed: " << config.randomSeed << " (for reproducible results)" << std::endl;
+    std::cout << "Target character: '" << config.targetCharacter << "' (ASCII: " << static_cast<int>(config.targetCharacter) << ")" << std::endl;
+    
+    return config;
+}
+
+void validateConfiguration(const TestConfiguration& config) {
+    if (config.stringLength < 16) {
+        throw std::invalid_argument("String length must be at least 16 bytes");
+    }
+    
+    if (!isPowerOfTwo(config.alignment)) {
+        throw std::invalid_argument("Alignment must be a power of 2");
+    }
+    
+    if (config.repetitions < 1 || config.repetitions > 1000) {
+        throw std::invalid_argument("Repetitions must be between 1 and 1000");
+    }
+    
+    // Validate target character (should be printable ASCII for this workshop)
+    if (config.targetCharacter < 32 || config.targetCharacter > 126) {
+        std::cout << "Warning: Target character is not printable ASCII. Results may vary." << std::endl;
+    }
+}
+
+bool isPowerOfTwo(size_t value) {
+    return value > 0 && (value & (value - 1)) == 0;
+}
+
+bool validateResults(size_t serialCount, size_t simdCount, const char* str, size_t length, char targetChar) {
+    if (serialCount != simdCount) {
+        std::cerr << "Validation failed! Serial: " << serialCount 
+                  << " SIMD: " << simdCount << std::endl;
+        
+        // Mostrar fragmento problemático
+        size_t start = std::max(0, static_cast<int>(length/2 - 10));
+        std::cerr << "String fragment: " << std::string(str + start, 20) << std::endl;
+        return false;
+    }
+    return true;
+}
+
+
+================================================
+FILE: utils.h
+================================================
+#ifndef UTILS_H
+#define UTILS_H
+
+#include <iostream>
+#include <string>
+#include <random>
+#include <vector>
+#include <stdexcept>
+#include <cstdlib>
+#include <cstring>
+#include <cmath>
+#include <unordered_map>
+#include <memory>
+#include <chrono>
+#include <iomanip>
+#include <limits>
+
+/**
+ * Performance metrics structure to standardize measurements
+ * between serial and SIMD implementations
+ */
+struct PerformanceMetrics {
+    double executionTimeMs = 0.0;
+    size_t memoryUsedBytes = 0;
+    size_t stringLength = 0;
+    size_t alignment = 0;
+    size_t totalCharacters = 0;       // Total characters processed
+    char targetCharacter = '\0';      // Character being searched for
+    size_t occurrences = 0;           // Number of occurrences found
+    
+    void print() const;
+    void printCSVHeader() const;
+    void printCSVRow() const;
+    double getThroughputMBps() const;
+    double getCharactersPerSecond() const;
+};
+
+/**
+ * Deterministic random string generator with configurable alignment
+ * Uses fixed seed for reproducible results between serial and SIMD implementations
+ */
+class RandomStringGenerator {
+public:
+    explicit RandomStringGenerator(uint32_t seed = 42);
+    ~RandomStringGenerator();
+    
+    /**
+     * Generate aligned string with specified length and alignment
+     * @param length Total length including null terminator
+     * @param alignment Memory alignment (must be power of 2)
+     * @return Pointer to aligned memory containing random string
+     */
+    void* generateAlignedString(size_t length, size_t alignment);
+    
+    /**
+     * Free previously allocated aligned string
+     * @param alignedPtr Pointer returned by generateAlignedString
+     */
+    void freeAlignedString(void* alignedPtr);
+    
+    /**
+     * Reset generator to initial seed state for reproducible results
+     */
+    void resetSeed();
+    
+    /**
+     * Get current seed value
+     */
+    uint32_t getSeed() const { return seed; }
+
+private:
+    std::mt19937 rng;
+    uint32_t seed;
+    std::unordered_map<void*, void*> originalPointers;
+    
+    void* align(size_t alignment, size_t size, void* ptr, size_t space);
+    void generateRandomUTF8(char* buffer, size_t length);
+};
+
+/**
+ * Base class for character counting algorithms
+ * Ensures consistent interface between serial and SIMD versions
+ */
+class CharacterCounterBase {
+public:
+    virtual ~CharacterCounterBase() = default;
+    
+    /**
+     * Count occurrences of a specific character in string
+     * @param str Input string
+     * @param length String length (including null terminator)
+     * @param targetChar Character to search for
+     * @param metrics Output performance metrics
+     * @return Number of occurrences found
+     */
+    virtual size_t countCharacterOccurrences(const char* str, size_t length, char targetChar,
+                                           PerformanceMetrics& metrics) = 0;
+    
+    /**
+     * Get implementation name for reporting
+     */
+    virtual std::string getImplementationName() const = 0;
+};
+
+/**
+ * Test configuration structure for user input
+ */
+struct TestConfiguration {
+    size_t stringLength;
+    size_t alignment;
+    int repetitions;
+    bool exportCSV;
+    bool showDetailedResults;
+    uint32_t randomSeed;
+    char targetCharacter;             // Character to search for
+};
+
+/**
+ * Utility functions
+ */
+TestConfiguration getUserConfiguration();
+void validateConfiguration(const TestConfiguration& config);
+bool isPowerOfTwo(size_t value);
+
+
+bool validateResults(size_t serialCount, size_t simdCount, const char* str, size_t length, char targetChar);
+
+
+
+
+#endif // UTILS_H
+
+

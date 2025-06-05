@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 """
-Performance comparison plot between SIMD and Serial implementations
 CE-4302 Arquitectura de Computadores II - Taller 02
-
-16, 32, 64, 256, 512, 1024, 2048, 4096 bytes with single sample per test.
 """
 
 import subprocess
@@ -23,11 +20,10 @@ class PerformanceComparison:
         }
         
     def run_single_test(self, executable: str, string_length: int, alignment: int = 16, 
-                   target_char: str = 'a') -> Dict:
-        """Run a single performance test with one repetition"""
+                   target_char: str = ';', repetitions: int = 100) -> Dict:
+        """Run a single performance test with multiple repetitions for better timing resolution"""
         
-        # Single repetition as requested
-        repetitions = 1
+        # Use more repetitions for better timing precision
         input_data = f"{target_char}\n{string_length}\n{alignment}\n{repetitions}\nn\ny\n"
         
         try:
@@ -36,11 +32,11 @@ class PerformanceComparison:
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1  # Añadir bufsize para evitar el error
+                text=True
+                # Removed bufsize parameter that was causing the error
             )
             
-            stdout, stderr = process.communicate(input=input_data, timeout=30)
+            stdout, stderr = process.communicate(input=input_data, timeout=60)
             
             if process.returncode != 0:
                 print(f"Error running {executable} (return code {process.returncode}): {stderr}")
@@ -81,32 +77,42 @@ class PerformanceComparison:
         print(f"String sizes: {string_sizes}")
         print(f"Target character: '{target_char}'")
         print(f"Memory alignment: {alignment} bytes")
-        print(f"Repetitions per test: 1 (single sample)\n")
+        print(f"Repetitions per test: Variable (more for smaller sizes)\n")
         
         for size in string_sizes:
             print(f"Testing string length: {size} bytes")
             
+            # Adjust repetitions based on size for better timing resolution
+            if size <= 1024:
+                repetitions = 1000
+            elif size <= 8192:
+                repetitions = 500
+            else:
+                repetitions = 100
+            
+            print(f"  Using {repetitions} repetitions for this size")
+            
             # Test Serial implementation
             print("  Running Serial implementation...")
-            serial_result = self.run_single_test(self.serial_executable, size, alignment, target_char)
+            serial_result = self.run_single_test(self.serial_executable, size, alignment, target_char, repetitions)
             
             if serial_result:
                 self.results['Serial']['sizes'].append(size)
                 self.results['Serial']['times'].append(serial_result['avg_time_ms'])
                 self.results['Serial']['throughputs'].append(serial_result['throughput_mbps'])
-                print(f"    Serial: {serial_result['avg_time_ms']:.3f} ms, {serial_result['throughput_mbps']:.1f} MB/s")
+                print(f"    Serial: {serial_result['avg_time_ms']:.6f} ms, {serial_result['throughput_mbps']:.1f} MB/s")
             else:
                 print("    Serial: FAILED")
             
             # Test SIMD implementation
             print("  Running SIMD implementation...")
-            simd_result = self.run_single_test(self.simd_executable, size, alignment, target_char)
+            simd_result = self.run_single_test(self.simd_executable, size, alignment, target_char, repetitions)
             
             if simd_result:
                 self.results['SIMD']['sizes'].append(size)
                 self.results['SIMD']['times'].append(simd_result['avg_time_ms'])
                 self.results['SIMD']['throughputs'].append(simd_result['throughput_mbps'])
-                print(f"    SIMD:   {simd_result['avg_time_ms']:.3f} ms, {simd_result['throughput_mbps']:.1f} MB/s")
+                print(f"    SIMD:   {simd_result['avg_time_ms']:.6f} ms, {simd_result['throughput_mbps']:.1f} MB/s")
                 
                 # Calculate speedup if both results available
                 if serial_result:
@@ -115,15 +121,15 @@ class PerformanceComparison:
             else:
                 print("    SIMD: FAILED")
             print()
-        # Validación cruzada para el mayor tamaño
-        # Validación cruzada para el mayor tamaño
+        
+        # Cross-validation for the largest size
         max_size = max(string_sizes)
         print(f"\n=== Cross-validation for size: {max_size} ===")
 
-        # Obtener la misma cadena para ambas implementaciones
+        # Get the same string for both implementations - using fewer repetitions for validation
         input_data = f"{target_char}\n{max_size}\n{alignment}\n1\nn\nn\n"
 
-        # Ejecutar serial y capturar resultado
+        # Run serial and capture result
         serial_count = None
         try:
             process = subprocess.Popen(
@@ -136,7 +142,7 @@ class PerformanceComparison:
             stdout, stderr = process.communicate(input=input_data, timeout=30)
             
             if process.returncode == 0:
-                # Parsear el conteo serial del output
+                # Parse serial count from output
                 for line in stdout.split('\n'):
                     if "Occurrences Found:" in line:
                         serial_count = int(line.split(':')[1].strip())
@@ -144,7 +150,7 @@ class PerformanceComparison:
         except Exception as e:
             print(f"Error running serial validation: {e}")
 
-        # Ejecutar SIMD con misma cadena
+        # Run SIMD with same string
         simd_count = None
         try:
             process = subprocess.Popen(
@@ -157,7 +163,7 @@ class PerformanceComparison:
             stdout, stderr = process.communicate(input=input_data, timeout=30)
             
             if process.returncode == 0:
-                # Parsear el conteo SIMD del output
+                # Parse SIMD count from output
                 for line in stdout.split('\n'):
                     if "Occurrences Found:" in line:
                         simd_count = int(line.split(':')[1].strip())
@@ -172,8 +178,6 @@ class PerformanceComparison:
                 print(f"Validation passed! Results match: {serial_count} occurrences")
         else:
             print("Validation incomplete - could not get results from both implementations")
-
-            
     
     def create_performance_plots(self, output_dir: str = "comparison_plots"):
         """Create performance comparison plots"""
@@ -223,18 +227,20 @@ class PerformanceComparison:
         plt.gca().tick_params(labelsize=12)
         plt.gca().set_facecolor('#f8f9fa')
         
-        # Add value annotations
+        # Add value annotations for key points
         for i, (size, time) in enumerate(zip(serial_sizes, serial_times)):
-            plt.annotate(f'{time:.3f}ms', 
-                        xy=(size, time), xytext=(5, 10), 
-                        textcoords='offset points', fontsize=9, 
-                        ha='left', alpha=0.8, color='blue')
+            if i % 3 == 0:  # Annotate every 3rd point to avoid overcrowding
+                plt.annotate(f'{time:.4f}ms', 
+                            xy=(size, time), xytext=(5, 10), 
+                            textcoords='offset points', fontsize=9, 
+                            ha='left', alpha=0.8, color='blue')
         
         for i, (size, time) in enumerate(zip(simd_sizes, simd_times)):
-            plt.annotate(f'{time:.3f}ms', 
-                        xy=(size, time), xytext=(5, -15), 
-                        textcoords='offset points', fontsize=9, 
-                        ha='left', alpha=0.8, color='red')
+            if i % 3 == 0:  # Annotate every 3rd point to avoid overcrowding
+                plt.annotate(f'{time:.4f}ms', 
+                            xy=(size, time), xytext=(5, -15), 
+                            textcoords='offset points', fontsize=9, 
+                            ha='left', alpha=0.8, color='red')
         
         plt.tight_layout()
         plt.savefig(f"{output_dir}/execution_time_comparison.png", dpi=300, bbox_inches='tight')
@@ -306,9 +312,9 @@ class PerformanceComparison:
         # Customize the plot
         plt.xlabel('Input Vector Size (bytes)', fontsize=14, fontweight='bold')
         plt.ylabel('Speedup (Serial Time / SIMD Time)', fontsize=14, fontweight='bold')
-        plt.title('SIMD Speedup over Serial Implementation\n(Single Sample Measurements)', 
+        plt.title('SIMD Speedup over Serial Implementation\n(Multiple Sample Measurements)', 
                  fontsize=16, fontweight='bold')
-        plt.xticks(x_pos, [f'{size}' for size in speedup_sizes], fontsize=12)
+        plt.xticks(x_pos, [f'{size}' for size in speedup_sizes], fontsize=12, rotation=45)
         plt.gca().tick_params(labelsize=12)
         plt.grid(True, alpha=0.3, linestyle='--', axis='y')
         plt.legend(fontsize=12)
@@ -332,7 +338,7 @@ class PerformanceComparison:
         print("\n" + "="*80)
         print("PERFORMANCE SUMMARY TABLE")
         print("="*80)
-        print(f"{'Size (bytes)':<12} {'Serial (ms)':<12} {'SIMD (ms)':<12} {'Speedup':<10} {'SIMD Throughput':<15}")
+        print(f"{'Size (bytes)':<12} {'Serial (ms)':<15} {'SIMD (ms)':<15} {'Speedup':<10} {'SIMD Throughput':<15}")
         print("-"*80)
         
         serial_data = dict(zip(self.results['Serial']['sizes'], self.results['Serial']['times']))
@@ -345,15 +351,15 @@ class PerformanceComparison:
             speedup = serial_time / simd_time
             throughput = simd_throughput[size]
             
-            print(f"{size:<12} {serial_time:<12.3f} {simd_time:<12.3f} {speedup:<10.2f} {throughput:<15.1f}")
+            print(f"{size:<12} {serial_time:<15.6f} {simd_time:<15.6f} {speedup:<10.2f} {throughput:<15.1f}")
         
         print("="*80)
 
 def main():
-    # Tamaños válidos (mínimo 16 bytes según tu implementación)
-    STRING_SIZES = [16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384]
-    ALIGNMENTS = [16, 64]
-    TARGET_CHAR = ';'  # Definir la variable que faltaba
+    # Updated string sizes - start from 16 bytes minimum, use more reasonable progression
+    STRING_SIZES = [16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536]
+    ALIGNMENTS = [16, 32]  # Test both 16 and 32 byte alignment
+    TARGET_CHAR = ';'
     
     # Check if executables exist
     if not os.path.exists("./char_count_serial"):
@@ -372,7 +378,6 @@ def main():
         comparison.print_summary_table()
     
     print("\nPerformance comparison completed!")
-
 
 if __name__ == "__main__":
     main()

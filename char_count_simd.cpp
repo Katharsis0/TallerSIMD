@@ -115,7 +115,7 @@ void displayCharacterOccurrences(char targetChar, size_t occurrences, size_t tot
  */
 void exportResultsCSV(char targetChar, size_t occurrences, size_t totalChars, 
                      const std::vector<double>& executionTimes, const TestConfiguration& config,
-                     const std::string& filename = "simd_results.csv") {
+                     const std::string& filename) {
     std::ofstream file(filename);
     if (!file.is_open()) {
         std::cerr << "Error: Failed to create CSV file: " << filename << std::endl;
@@ -301,7 +301,7 @@ int main() {
         return 1;
     }
     
-    std::cout << "\nSerial character occurrence counting completed successfully!" << std::endl;
+    std::cout << "\nSIMD character occurrence counting completed successfully!" << std::endl;
     
     return 0;
 }

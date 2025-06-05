@@ -1,6 +1,8 @@
 #include "utils.h"
 #include <algorithm>
 #include <limits>
+#include <fstream>
+#include <numeric>
 
 // PerformanceMetrics implementation
 void PerformanceMetrics::print() const {
@@ -40,7 +42,7 @@ double PerformanceMetrics::getCharactersPerSecond() const {
 }
 
 // RandomStringGenerator implementation
-RandomStringGenerator::RandomStringGenerator(uint32_t seed) : seed(seed), rng(seed) {}
+RandomStringGenerator::RandomStringGenerator(uint32_t seed) : rng(seed), seed(seed) {}
 
 RandomStringGenerator::~RandomStringGenerator() {
     // Clean up any remaining allocated memory
@@ -124,6 +126,78 @@ void RandomStringGenerator::generateRandomUTF8(char* buffer, size_t length) {
         }
     }
     buffer[length - 1] = '\0';
+}
+
+// HighPrecisionTimer implementation
+std::vector<double> HighPrecisionTimer::measureExecutionTimes(
+    std::function<size_t()> operation, 
+    int repetitions, 
+    int warmup_runs) {
+    
+    std::vector<double> times;
+    times.reserve(repetitions);
+    
+    // Warmup runs to stabilize cache and CPU
+    for (int i = 0; i < warmup_runs; ++i) {
+        operation();
+    }
+    
+    for (int i = 0; i < repetitions; ++i) {
+        // Usar alta precisión temporal
+        auto start = std::chrono::high_resolution_clock::now();
+        
+        // Ejecutar la operación
+        operation();
+        
+        auto end = std::chrono::high_resolution_clock::now();
+        
+        // Convertir a microsegundos para mejor precisión
+        auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+        double time_ms = duration.count() / 1000000.0; // Convertir a ms
+        
+        times.push_back(time_ms);
+    }
+    
+    return times;
+}
+
+double HighPrecisionTimer::calculateMedian(std::vector<double> times) {
+    std::sort(times.begin(), times.end());
+    size_t n = times.size();
+    if (n % 2 == 0) {
+        return (times[n/2 - 1] + times[n/2]) / 2.0;
+    } else {
+        return times[n/2];
+    }
+}
+
+std::pair<double, double> HighPrecisionTimer::removeOutliers(const std::vector<double>& times) {
+    if (times.size() < 3) {
+        double sum = std::accumulate(times.begin(), times.end(), 0.0);
+        return std::make_pair(sum / times.size(), 0.0);
+    }
+    
+    std::vector<double> sorted_times = times;
+    std::sort(sorted_times.begin(), sorted_times.end());
+    
+    // Remover el 10% superior e inferior para eliminar outliers
+    size_t remove_count = std::max(1UL, times.size() / 10);
+    std::vector<double> trimmed(
+        sorted_times.begin() + remove_count, 
+        sorted_times.end() - remove_count
+    );
+    
+    double sum = std::accumulate(trimmed.begin(), trimmed.end(), 0.0);
+    double mean = sum / trimmed.size();
+    
+    // Calcular desviación estándar
+    double variance = 0;
+    for (double time : trimmed) {
+        variance += (time - mean) * (time - mean);
+    }
+    double stddev = std::sqrt(variance / trimmed.size());
+    
+    return std::make_pair(mean, stddev);
 }
 
 // Utility functions
@@ -228,7 +302,7 @@ bool isPowerOfTwo(size_t value) {
     return value > 0 && (value & (value - 1)) == 0;
 }
 
-bool validateResults(size_t serialCount, size_t simdCount, const char* str, size_t length, char targetChar) {
+bool validateResults(size_t serialCount, size_t simdCount, const char* str, size_t length, char) {
     if (serialCount != simdCount) {
         std::cerr << "Validation failed! Serial: " << serialCount 
                   << " SIMD: " << simdCount << std::endl;
@@ -239,4 +313,188 @@ bool validateResults(size_t serialCount, size_t simdCount, const char* str, size
         return false;
     }
     return true;
+}
+
+/**
+ * Display character occurrence results in a readable format
+ */
+void displayCharacterOccurrences(char targetChar, size_t occurrences, size_t totalChars) {
+    std::cout << "\n=== Character Occurrence Analysis ===" << std::endl;
+    
+    // Handle special characters for display
+    std::string charDisplay;
+    if (targetChar == ' ') charDisplay = "SPACE";
+    else if (targetChar == '\t') charDisplay = "TAB";
+    else if (targetChar == '\n') charDisplay = "NEWLINE";
+    else if (targetChar >= 32 && targetChar <= 126) charDisplay = std::string(1, targetChar);
+    else charDisplay = "CTRL";
+    
+    double frequency = totalChars > 0 ? (static_cast<double>(occurrences) / totalChars) * 100.0 : 0.0;
+    
+    std::cout << "Target Character: " << charDisplay << " (ASCII: " << static_cast<int>(targetChar) << ")" << std::endl;
+    std::cout << "Total Characters Analyzed: " << totalChars << std::endl;
+    std::cout << "Occurrences Found: " << occurrences << std::endl;
+    std::cout << "Frequency: " << std::fixed << std::setprecision(6) << frequency << "%" << std::endl;
+    std::cout << "====================================" << std::endl;
+}
+
+/**
+ * Export results to CSV format
+ */
+void exportResultsCSV(char targetChar, size_t occurrences, size_t totalChars, 
+                     const std::vector<double>& executionTimes, const TestConfiguration& config,
+                     const std::string& filename) {
+    std::ofstream file(filename);
+    if (!file.is_open()) {
+        std::cerr << "Error: Failed to create CSV file: " << filename << std::endl;
+        return;
+    }
+
+    // Calculate statistics
+    double totalTime = std::accumulate(executionTimes.begin(), executionTimes.end(), 0.0);
+    double avgTime = totalTime / executionTimes.size();
+    
+    double variance = 0;
+    for (double time : executionTimes) {
+        variance += (time - avgTime) * (time - avgTime);
+    }
+    double stdDev = std::sqrt(variance / executionTimes.size());
+    double minTime = *std::min_element(executionTimes.begin(), executionTimes.end());
+    double maxTime = *std::max_element(executionTimes.begin(), executionTimes.end());
+    
+    double avgThroughput = (config.stringLength / (avgTime / 1000.0)) / (1024.0 * 1024.0);
+    double avgCharsPerSec = totalChars / (avgTime / 1000.0);
+    double frequency = totalChars > 0 ? (static_cast<double>(occurrences) / totalChars) * 100.0 : 0.0;
+    
+    // Determine implementation type based on filename
+    std::string implType = (filename.find("simd") != std::string::npos) ? "SIMD-SSE4.2" : "Serial";
+    
+    // Write metadata and summary
+    file << "# " << implType << " Character Occurrence Counting Results\n";
+    file << "# Configuration\n";
+    file << "Implementation," << implType << "\n";
+    file << "TargetCharacter," << targetChar << "\n";
+    file << "TargetCharacterASCII," << static_cast<int>(targetChar) << "\n";
+    file << "StringLength," << config.stringLength << "\n";
+    file << "Alignment," << config.alignment << "\n";
+    file << "Repetitions," << config.repetitions << "\n";
+    file << "RandomSeed," << config.randomSeed << "\n";
+    file << "TotalCharacters," << totalChars << "\n";
+    file << "Occurrences," << occurrences << "\n";
+    file << "Frequency," << std::fixed << std::setprecision(6) << frequency << "\n";
+    file << "\n";
+    
+    // Performance summary
+    file << "# Performance Summary\n";
+    file << "Metric,Value,Unit\n";
+    file << "AvgExecutionTime," << avgTime << ",ms\n";
+    file << "StdDeviation," << stdDev << ",ms\n";
+    file << "MinExecutionTime," << minTime << ",ms\n";
+    file << "MaxExecutionTime," << maxTime << ",ms\n";
+    file << "AvgThroughput," << avgThroughput << ",MB/s\n";
+    file << "AvgCharsPerSecond," << avgCharsPerSec << ",chars/s\n";
+    file << "\n";
+    
+    // Individual execution times
+    file << "# Individual Execution Times\n";
+    file << "Run,ExecutionTime_ms,Throughput_MBps,CharsPerSecond\n";
+    for (size_t i = 0; i < executionTimes.size(); ++i) {
+        double throughput = (config.stringLength / (executionTimes[i] / 1000.0)) / (1024.0 * 1024.0);
+        double charsPerSec = totalChars / (executionTimes[i] / 1000.0);
+        file << (i + 1) << "," << executionTimes[i] << "," << throughput << "," << charsPerSec << "\n";
+    }
+    
+    file.close();
+    std::cout << "Results exported to: " << filename << std::endl;
+}
+
+// Función mejorada para análisis de rendimiento
+void runImprovedPerformanceAnalysis(CharacterCounterBase& counter, const TestConfiguration& config) {
+    std::cout << "\n=== Improved Performance Analysis ===" << std::endl;
+    std::cout << "Implementation: " << counter.getImplementationName() << std::endl;
+    std::cout << "Target Character: '" << config.targetCharacter << "' (ASCII: " << static_cast<int>(config.targetCharacter) << ")" << std::endl;
+    std::cout << "String Length: " << config.stringLength << " bytes" << std::endl;
+    std::cout << "Memory Alignment: " << config.alignment << " bytes" << std::endl;
+    std::cout << "Repetitions: " << config.repetitions << std::endl;
+    
+    RandomStringGenerator generator(config.randomSeed);
+    
+    try {
+        // Generate aligned string
+        std::cout << "\nGenerating deterministic random string..." << std::endl;
+        void* aligned = generator.generateAlignedString(config.stringLength, config.alignment);
+        char* str = static_cast<char*>(aligned);
+        
+        std::cout << "Searching for character '" << config.targetCharacter << "'..." << std::endl;
+        
+        // Usar el timer mejorado
+        size_t totalOccurrences = 0;
+        auto operation = [&]() -> size_t {
+            PerformanceMetrics metrics;
+            return counter.countCharacterOccurrences(str, config.stringLength, config.targetCharacter, metrics);
+        };
+        
+        // Medir con alta precisión
+        std::vector<double> executionTimes = HighPrecisionTimer::measureExecutionTimes(
+            operation, config.repetitions, 10); // 10 warmup runs
+        
+        // Obtener el número de ocurrencias de la primera ejecución medida
+        PerformanceMetrics finalMetrics;
+        totalOccurrences = counter.countCharacterOccurrences(
+            str, config.stringLength, config.targetCharacter, finalMetrics);
+        
+        // Análisis estadístico mejorado - compatible con C++14
+        std::pair<double, double> result = HighPrecisionTimer::removeOutliers(executionTimes);
+        double avgTime = result.first;
+        double stdDev = result.second;
+        
+        double medianTime = HighPrecisionTimer::calculateMedian(executionTimes);
+        double minTime = *std::min_element(executionTimes.begin(), executionTimes.end());
+        double maxTime = *std::max_element(executionTimes.begin(), executionTimes.end());
+        
+        // Calculate derived metrics
+        size_t totalChars = config.stringLength - 1; // Exclude null terminator
+        double avgThroughput = (config.stringLength / (avgTime / 1000.0)) / (1024.0 * 1024.0);
+        double avgCharsPerSec = totalChars / (avgTime / 1000.0);
+        
+        // Display results
+        displayCharacterOccurrences(config.targetCharacter, totalOccurrences, totalChars);
+        
+        std::cout << "\n=== Improved Performance Results ===" << std::endl;
+        std::cout << std::fixed << std::setprecision(6);
+        std::cout << "Average Execution Time: " << avgTime << " ms" << std::endl;
+        std::cout << "Median Execution Time: " << medianTime << " ms" << std::endl;
+        std::cout << "Standard Deviation: " << stdDev << " ms" << std::endl;
+        std::cout << "Min Execution Time: " << minTime << " ms" << std::endl;
+        std::cout << "Max Execution Time: " << maxTime << " ms" << std::endl;
+        std::cout << "Average Throughput: " << avgThroughput << " MB/s" << std::endl;
+        std::cout << "Characters per Second: " << avgCharsPerSec << std::endl;
+        std::cout << "Coefficient of Variation: " << (stdDev / avgTime * 100.0) << "%" << std::endl;
+        
+        // Memory alignment verification
+        std::cout << "\n=== Memory Alignment Verification ===" << std::endl;
+        uintptr_t address = reinterpret_cast<uintptr_t>(aligned);
+        std::cout << "Memory Address: 0x" << std::hex << address << std::dec << std::endl;
+        std::cout << "Alignment Check: " << (address % config.alignment == 0 ? "PASSED" : "FAILED") << std::endl;
+        std::cout << "Address modulo alignment: " << (address % config.alignment) << std::endl;
+        
+        // CSV output usando tiempo promedio sin outliers
+        if (config.exportCSV) {
+            std::cout << "\n=== CSV Export ===" << std::endl;
+            std::cout << "StringLength,Alignment,TargetChar,TotalChars,Occurrences,AvgTimeMs,StdDevMs,MinTimeMs,MaxTimeMs,ThroughputMBps,CharsPerSec" << std::endl;
+            std::cout << config.stringLength << "," << config.alignment << "," << config.targetCharacter << "," << totalChars << "," 
+                      << totalOccurrences << "," << avgTime << "," << stdDev << "," << minTime << "," << maxTime << "," 
+                      << avgThroughput << "," << avgCharsPerSec << std::endl;
+            
+            // Usar las funciones de exportación existentes con los tiempos mejorados
+            exportResultsCSV(config.targetCharacter, totalOccurrences, totalChars, executionTimes, config, 
+                           counter.getImplementationName() == "Serial" ? "serial_results.csv" : "simd_results.csv");
+        }
+        
+        generator.freeAlignedString(aligned);
+        
+    } catch (const std::exception& e) {
+        std::cerr << "Error during performance analysis: " << e.what() << std::endl;
+        throw;
+    }
 }

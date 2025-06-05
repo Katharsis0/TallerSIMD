@@ -14,6 +14,9 @@
 #include <chrono>
 #include <iomanip>
 #include <limits>
+#include <functional>
+#include <algorithm>
+#include <numeric>
 
 /**
  * Performance metrics structure to standardize measurements
@@ -33,6 +36,21 @@ struct PerformanceMetrics {
     void printCSVRow() const;
     double getThroughputMBps() const;
     double getCharactersPerSecond() const;
+};
+
+/**
+ * High precision timer class for accurate performance measurements
+ */
+class HighPrecisionTimer {
+public:
+    static std::vector<double> measureExecutionTimes(
+        std::function<size_t()> operation, 
+        int repetitions, 
+        int warmup_runs = 5);
+    
+    static double calculateMedian(std::vector<double> times);
+    
+    static std::pair<double, double> removeOutliers(const std::vector<double>& times);
 };
 
 /**
@@ -121,11 +139,20 @@ struct TestConfiguration {
 TestConfiguration getUserConfiguration();
 void validateConfiguration(const TestConfiguration& config);
 bool isPowerOfTwo(size_t value);
-
-
 bool validateResults(size_t serialCount, size_t simdCount, const char* str, size_t length, char targetChar);
 
+/**
+ * Performance analysis functions
+ */
+void runPerformanceAnalysis(CharacterCounterBase& counter, const TestConfiguration& config);
+void runImprovedPerformanceAnalysis(CharacterCounterBase& counter, const TestConfiguration& config);
 
-
+/**
+ * Display and export functions
+ */
+void displayCharacterOccurrences(char targetChar, size_t occurrences, size_t totalChars);
+void exportResultsCSV(char targetChar, size_t occurrences, size_t totalChars, 
+                     const std::vector<double>& executionTimes, const TestConfiguration& config,
+                     const std::string& filename = "results.csv");
 
 #endif // UTILS_H

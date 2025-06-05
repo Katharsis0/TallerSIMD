@@ -83,7 +83,7 @@ void displayCharacterOccurrences(char targetChar, size_t occurrences, size_t tot
  */
 void exportResultsCSV(char targetChar, size_t occurrences, size_t totalChars, 
                      const std::vector<double>& executionTimes, const TestConfiguration& config,
-                     const std::string& filename = "serial_results.csv") {
+                     const std::string& filename) {
     std::ofstream file(filename);
     if (!file.is_open()) {
         std::cerr << "Error: Failed to create CSV file: " << filename << std::endl;
