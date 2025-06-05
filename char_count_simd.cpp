@@ -14,7 +14,7 @@ void exportResultsCSV(char targetChar, size_t occurrences, size_t totalChars,
                      const std::string& filename);
 
 /**
- * SIMD implementation of character occurrence counter using SSE4.2 intrinsics
+ * SIMD implementation of character occurrence counter 
  * Counts occurrences of a SPECIFIC character in the string
  */
 class SIMDCharacterCounter : public CharacterCounterBase {
@@ -47,43 +47,40 @@ public:
 private:
     /**
      * SIMD implementation to count occurrences of a specific character
-     * Based on the workshop requirements using SSE4.2 intrinsics
      */
     size_t countCharacterSIMD(const char* str, size_t length, char targetChar) {
-        size_t total = 0;
-        size_t i = 0;
-        
-        // Broadcast the target character to all positions in a 128-bit vector (16 bytes)
-        // This implements the intrinsic from point b) of the workshop
-        __m128i vector_char = _mm_set1_epi8(targetChar);
-
-        // Process 16 bytes at a time using SIMD
-        for (; i <= length - 16; i += 16) {
-            // Load 16 bytes from string (handles unaligned data as required)
-            __m128i string_block = _mm_loadu_si128(reinterpret_cast<const __m128i*>(str + i));
-            
-            // Compare each byte with the target character
-            // This implements the intrinsic from point c) of the workshop
-            __m128i comparison_result = _mm_cmpeq_epi8(string_block, vector_char);
-            
-            // Create a bitmask from the comparison results
-            // This implements the get_mask() function mentioned in the workshop
-            int mask = _mm_movemask_epi8(comparison_result);
-            
-            // Count the number of set bits (1s) in the mask
-            // This implements the count_ones() function mentioned in the workshop
-            total += _mm_popcnt_u32(static_cast<unsigned int>(mask));
-        }
-
-        // Handle remaining bytes (less than 16) - "safe" handling as required
-        // This ensures we process all characters even when length is not multiple of 16
+    size_t total = 0;
+    size_t i = 0;
+    
+    // Handle very small strings (less than 16 bytes) with serial code
+    if (length < 16) {
         for (; i < length; ++i) {
             if (str[i] == targetChar) {
                 ++total;
             }
         }
-
         return total;
+    }
+
+    // Broadcast the target character
+    __m128i vector_char = _mm_set1_epi8(targetChar);
+
+    // Process 16 bytes at a time using SIMD
+    for (; i <= length - 16; i += 16) {
+        __m128i string_block = _mm_loadu_si128(reinterpret_cast<const __m128i*>(str + i));
+        __m128i comparison_result = _mm_cmpeq_epi8(string_block, vector_char);
+        int mask = _mm_movemask_epi8(comparison_result);
+        total += _mm_popcnt_u32(static_cast<unsigned int>(mask));
+    }
+
+    // Handle remaining bytes
+    for (; i < length; ++i) {
+        if (str[i] == targetChar) {
+            ++total;
+        }
+    }
+
+    return total;
     }
 };
 

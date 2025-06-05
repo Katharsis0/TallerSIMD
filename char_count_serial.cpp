@@ -17,7 +17,6 @@ void exportResultsCSV(char targetChar, size_t occurrences, size_t totalChars,
 
 /**
  * Serial implementation of character occurrence counter
- * Counts occurrences of a SPECIFIC character in the string
  */
 class SerialCharacterCounter : public CharacterCounterBase {
 public:
@@ -29,7 +28,6 @@ public:
         size_t occurrences = 0;
         
         // Serial algorithm: iterate through each character and count target occurrences
-        // Note: length includes null terminator, so we process length-1 characters
         for (size_t i = 0; i < length - 1; ++i) {
             if (str[i] == targetChar) {
                 occurrences++;
@@ -54,10 +52,6 @@ public:
         return "Serial";
     }
 };
-
-/**
- * Display character occurrence results in a readable format
- */
 
 
 

@@ -64,6 +64,17 @@ void* RandomStringGenerator::generateAlignedString(size_t length, size_t alignme
         throw std::invalid_argument("Length must be greater than 0");
     }
 
+    // For unaligned case (alignment=1), just allocate normally
+    if (alignment == 1) {
+        void* rawMemory = malloc(length);
+        if (!rawMemory) {
+            throw std::bad_alloc();
+        }
+        generateRandomUTF8(static_cast<char*>(rawMemory), length);
+        originalPointers[rawMemory] = rawMemory; // Store same pointer for cleanup
+        return rawMemory;
+    }
+    
     // Calculate total size needed (string + alignment padding)
     size_t totalSize = length + alignment - 1;
     
