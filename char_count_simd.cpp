@@ -5,6 +5,26 @@
 #include <algorithm>  
 #include <fstream>   
 
+void displayCharacterFrequency(const std::unordered_map<char, size_t>& charCounts, 
+                              size_t totalChars, bool showDetailed);
+
+void exportCharacterFrequencyCSV(const std::unordered_map<char, size_t>& charCounts, 
+                               size_t totalChars, const std::string& filename);
+
+void exportPerformanceDataCSV(const std::vector<double>& executionTimes,
+                             const TestConfiguration& config,
+                             const std::unordered_map<char, size_t>& charCounts,
+                             const std::string& filename);
+
+void exportCharacterDistributionCSV(const std::unordered_map<char, size_t>& charCounts,
+                                  size_t totalChars,
+                                  const std::string& filename);
+
+void exportSummaryStatsCSV(const TestConfiguration& config,
+                          const std::vector<double>& executionTimes,
+                          const std::unordered_map<char, size_t>& charCounts,
+                          const std::string& filename);
+
 class SIMDCharacterCounter : public CharacterCounterBase {
 public:
     std::unordered_map<char, size_t> countAllCharacters(const char* str, size_t length, 
@@ -135,11 +155,16 @@ void displayCharacterFrequency(const std::unordered_map<char, size_t>& charCount
  * Export character frequency data to CSV format
  */
 void exportCharacterFrequencyCSV(const std::unordered_map<char, size_t>& charCounts, 
-                                size_t totalChars) {
-    std::cout << "\n=== Character Frequency CSV Data ===" << std::endl;
-    std::cout << "Character,ASCII_Code,Count,Frequency_Percent" << std::endl;
+                               size_t totalChars, const std::string& filename = "character_frequency_simd.csv") {
+    std::ofstream file(filename);
+    if (!file.is_open()) {
+        std::cerr << "Error: Failed to create CSV file: " << filename << std::endl;
+        return;
+    }
+
+    // Write to file instead of cout
+    file << "Character,ASCII_Code,Count,Frequency_Percent" << std::endl;
     
-    // Sort by ASCII value for consistent output
     std::vector<std::pair<char, size_t>> sortedChars(charCounts.begin(), charCounts.end());
     std::sort(sortedChars.begin(), sortedChars.end(), 
              [](const auto& a, const auto& b) { return a.first < b.first; });
@@ -149,9 +174,12 @@ void exportCharacterFrequencyCSV(const std::unordered_map<char, size_t>& charCou
         size_t count = pair.second;
         double frequency = (static_cast<double>(count) / totalChars) * 100.0;
         
-        std::cout << "\"" << ch << "\"," << static_cast<int>(ch) << "," 
-                 << count << "," << std::fixed << std::setprecision(6) << frequency << std::endl;
+        file << "\"" << ch << "\"," << static_cast<int>(ch) << "," 
+             << count << "," << std::fixed << std::setprecision(6) << frequency << std::endl;
     }
+
+    file.close();
+    std::cout << "Character frequency data exported to: " << filename << std::endl;
 }
 
 /**
@@ -252,7 +280,9 @@ void runPerformanceAnalysis(SIMDCharacterCounter& counter, const TestConfigurati
                       << avgThroughput << "," << avgCharsPerSec << std::endl;
             
             // Export character frequency data
-            exportCharacterFrequencyCSV(finalCharCounts, totalChars);
+            exportCharacterFrequencyCSV(finalCharCounts, totalChars, "character_frequency_simd.csv");
+            exportPerformanceDataCSV(executionTimes, config, finalCharCounts, "performance_data_simd.csv");
+
         }
         
         generator.freeAlignedString(aligned);
@@ -268,21 +298,13 @@ void runPerformanceAnalysis(SIMDCharacterCounter& counter, const TestConfigurati
 void exportPerformanceDataCSV(const std::vector<double>& executionTimes,
                              const TestConfiguration& config,
                              const std::unordered_map<char, size_t>& charCounts,
-                             const std::string& filename = "") {
+                             const std::string& filename = "performance_data_simd.csv") {
     
     std::string csvFilename = filename;
-    if (csvFilename.empty()) {
-        // Generate timestamp-based filename
-        auto now = std::time(nullptr);
-        auto tm = *std::localtime(&now);
-        char timestamp[100];
-        std::strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", &tm);
-        csvFilename = "simd_performance_" + std::string(timestamp) + ".csv";
-    }
     
-    std::ofstream file(csvFilename);
+    std::ofstream file(filename);
     if (!file.is_open()) {
-        std::cerr << "Failed to create CSV file: " << csvFilename << std::endl;
+        std::cerr << "Error: Failed to create CSV file: " << filename << std::endl;
         return;
     }
     
