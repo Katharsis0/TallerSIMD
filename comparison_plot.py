@@ -114,8 +114,28 @@ class PerformanceComparison:
                     print(f"    Speedup: {speedup:.2f}x")
             else:
                 print("    SIMD: FAILED")
-            
             print()
+            # Validación cruzada para el mayor tamaño
+        max_size = max(string_sizes)
+        print(f"\n=== Cross-validation for size: {max_size} ===")
+
+        # Obtener la misma cadena para ambas implementaciones
+        input_data = f"{target_char}\n{max_size}\n{alignment}\n1\nn\nn\n"
+
+        # Ejecutar serial y capturar resultado
+        process = subprocess.Popen([self.serial_executable], ...)
+        # ... procesar salida para obtener conteo serial ...
+
+        # Ejecutar SIMD con misma cadena
+        process = subprocess.Popen([self.simd_executable], ...)
+        # ... procesar salida para obtener conteo SIMD ...
+
+        if serial_count != simd_count:
+            print(f"VALIDATION FAILED! Serial: {serial_count}, SIMD: {simd_count}")
+        else:
+            print("Validation passed! Results match.")
+
+            
     
     def create_performance_plots(self, output_dir: str = "comparison_plots"):
         """Create performance comparison plots"""
@@ -292,10 +312,8 @@ class PerformanceComparison:
         print("="*80)
 
 def main():
-    # Fixed string sizes as requested
-    STRING_SIZES = [8, 64, 256, 512, 1024, 2048, 4096]
-    TARGET_CHAR = ';'
-    ALIGNMENT = 16
+    STRING_SIZES = [8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384]  # Más tamaños
+    ALIGNMENTS = [16, 64]  # Dos alineamientos diferentes
     
     # Check if executables exist
     if not os.path.exists("./char_count_serial"):
@@ -306,21 +324,17 @@ def main():
         print("Error: ./char_count_simd not found. Please compile first with 'make'")
         sys.exit(1)
     
-    # Run performance comparison
-    comparison = PerformanceComparison()
-    comparison.run_comparison_tests(STRING_SIZES, TARGET_CHAR, ALIGNMENT)
+    for alignment in ALIGNMENTS:
+        print(f"\n=== Testing with alignment: {alignment} bytes ===")
+        comparison = PerformanceComparison()
+        comparison.run_comparison_tests(STRING_SIZES, ';', alignment)
+        comparison.create_performance_plots(f"comparison_plots_align{alignment}")
     
-    # Print summary table
-    comparison.print_summary_table()
-    
-    # Create plots
-    comparison.create_performance_plots()
-    
-    print(f"\nPerformance comparison completed!")
-    print(f"String sizes tested: {STRING_SIZES}")
-    print(f"Target character: '{TARGET_CHAR}'")
-    print(f"Memory alignment: {ALIGNMENT} bytes")
-    print(f"Samples per test: 1")
+        print(f"\nPerformance comparison completed!")
+        print(f"String sizes tested: {STRING_SIZES}")
+        print(f"Target character: '{TARGET_CHAR}'")
+        print(f"Memory alignment: {ALIGNMENT} bytes")
+        print(f"Samples per test: 1")
 
 if __name__ == "__main__":
     main()

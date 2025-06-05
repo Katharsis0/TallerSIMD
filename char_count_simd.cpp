@@ -1,5 +1,4 @@
 // char_count_simd.cpp
-// SIMD character occurrence counting implementation using SSE4.2 intrinsics
 // CE-4302 Arquitectura de Computadores II
 
 #include "utils.h"

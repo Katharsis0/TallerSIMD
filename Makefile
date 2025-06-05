@@ -38,7 +38,7 @@ performance: $(TARGET_SERIAL) $(TARGET_SIMD)
 
 # Clean targets
 clean:
-	rm -f $(TARGET_SERIAL) $(TARGET_SIMD) *.o
+	rm -f $(TARGET_SERIAL) $(TARGET_SIMD) *.o *.csv
 
 distclean: clean
 	rm -f *.log *.csv

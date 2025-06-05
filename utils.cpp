@@ -101,13 +101,29 @@ void* RandomStringGenerator::align(size_t alignment, size_t size, void* ptr, siz
 }
 
 void RandomStringGenerator::generateRandomUTF8(char* buffer, size_t length) {
-    // Use printable ASCII characters (32-126) for simplicity and consistency
-    std::uniform_int_distribution<int> dist(32, 126);
+    std::uniform_int_distribution<int> dist1(0x20, 0x7E); // ASCII básico
+    std::uniform_int_distribution<int> dist2(0xC2, 0xF4); // Inicios de secuencia UTF-8
     
-    for (size_t i = 0; i < length - 1; ++i) {
-        buffer[i] = static_cast<char>(dist(rng));
+    for (size_t i = 0; i < length - 1; ) {
+        if (dist1(rng) % 4 == 0) { // 25% de probabilidad de caracter no ASCII
+            int lead = dist2(rng);
+            int charSize = 1;
+            
+            if (lead < 0xE0) charSize = 2;
+            else if (lead < 0xF0) charSize = 3;
+            else charSize = 4;
+            
+            if (i + charSize >= length - 1) break;
+            
+            buffer[i++] = static_cast<char>(lead);
+            for (int j = 1; j < charSize; j++) {
+                buffer[i++] = static_cast<char>(0x80 + (dist1(rng) % 0x40));
+            }
+        } else {
+            buffer[i++] = static_cast<char>(dist1(rng));
+        }
     }
-    buffer[length - 1] = '\0'; // Null-terminator
+    buffer[length - 1] = '\0';
 }
 
 // Utility functions
@@ -210,4 +226,17 @@ void validateConfiguration(const TestConfiguration& config) {
 
 bool isPowerOfTwo(size_t value) {
     return value > 0 && (value & (value - 1)) == 0;
+}
+
+bool validateResults(size_t serialCount, size_t simdCount, const char* str, size_t length, char targetChar) {
+    if (serialCount != simdCount) {
+        std::cerr << "Validation failed! Serial: " << serialCount 
+                  << " SIMD: " << simdCount << std::endl;
+        
+        // Mostrar fragmento problemático
+        size_t start = std::max(0, static_cast<int>(length/2 - 10));
+        std::cerr << "String fragment: " << std::string(str + start, 20) << std::endl;
+        return false;
+    }
+    return true;
 }

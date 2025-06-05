@@ -122,4 +122,10 @@ TestConfiguration getUserConfiguration();
 void validateConfiguration(const TestConfiguration& config);
 bool isPowerOfTwo(size_t value);
 
+
+bool validateResults(size_t serialCount, size_t simdCount, const char* str, size_t length, char targetChar);
+
+
+
+
 #endif // UTILS_H
