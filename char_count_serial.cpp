@@ -1,5 +1,5 @@
 // char_count_serial.cpp
-// Serial character frequency analysis implementation
+// Serial character occurrence counting implementation
 // CE-4302 Arquitectura de Computadores II
 
 #include "utils.h"
@@ -9,48 +9,31 @@
 #include <ctime>
 #include <numeric>
 
-
-//Declaraciones
-void displayCharacterFrequency(const std::unordered_map<char, size_t>& charCounts, 
-                              size_t totalChars, bool showDetailed);
-
-void exportCharacterFrequencyCSV(const std::unordered_map<char, size_t>& charCounts, 
-                               size_t totalChars, const std::string& filename);
-
-void exportPerformanceDataCSV(const std::vector<double>& executionTimes,
-                             const TestConfiguration& config,
-                             const std::unordered_map<char, size_t>& charCounts,
-                             const std::string& filename);
-
-void exportCharacterDistributionCSV(const std::unordered_map<char, size_t>& charCounts,
-                                  size_t totalChars,
-                                  const std::string& filename);
-
-void exportSummaryStatsCSV(const TestConfiguration& config,
-                          const std::vector<double>& executionTimes,
-                          const std::unordered_map<char, size_t>& charCounts,
-                          const std::string& filename);
-
-
-
+// Forward declarations
+void displayCharacterOccurrences(char targetChar, size_t occurrences, size_t totalChars);
+void exportResultsCSV(char targetChar, size_t occurrences, size_t totalChars, 
+                     const std::vector<double>& executionTimes, const TestConfiguration& config,
+                     const std::string& filename);
 
 /**
- * Serial implementation of character frequency analyzer
- * Counts ALL characters in the string and returns frequency map
+ * Serial implementation of character occurrence counter
+ * Counts occurrences of a SPECIFIC character in the string
  */
 class SerialCharacterCounter : public CharacterCounterBase {
 public:
-    std::unordered_map<char, size_t> countAllCharacters(const char* str, size_t length, 
-                                                       PerformanceMetrics& metrics) override {
+    size_t countCharacterOccurrences(const char* str, size_t length, char targetChar,
+                                   PerformanceMetrics& metrics) override {
         
         auto startTime = std::chrono::high_resolution_clock::now();
         
-        std::unordered_map<char, size_t> charCounts;
+        size_t occurrences = 0;
         
-        // Serial algorithm: iterate through each character and count all occurrences
+        // Serial algorithm: iterate through each character and count target occurrences
         // Note: length includes null terminator, so we process length-1 characters
         for (size_t i = 0; i < length - 1; ++i) {
-            charCounts[str[i]]++;
+            if (str[i] == targetChar) {
+                occurrences++;
+            }
         }
        
         auto endTime = std::chrono::high_resolution_clock::now();
@@ -61,9 +44,10 @@ public:
         metrics.memoryUsedBytes = length;
         metrics.stringLength = length;
         metrics.totalCharacters = length - 1; // Exclude null terminator
-        metrics.uniqueCharacters = charCounts.size();
+        metrics.targetCharacter = targetChar;
+        metrics.occurrences = occurrences;
         
-        return charCounts;
+        return occurrences;
     }
     
     std::string getImplementationName() const override {
@@ -72,83 +56,93 @@ public:
 };
 
 /**
- * Display character frequency results in a readable format
+ * Display character occurrence results in a readable format
  */
-void displayCharacterFrequency(const std::unordered_map<char, size_t>& charCounts, 
-                              size_t totalChars, bool showDetailed) {
+void displayCharacterOccurrences(char targetChar, size_t occurrences, size_t totalChars) {
+    std::cout << "\n=== Character Occurrence Analysis ===" << std::endl;
     
-    if (!showDetailed) {
-        std::cout << "Character frequency analysis completed. Use detailed view to see frequencies." << std::endl;
-        return;
-    }
+    // Handle special characters for display
+    std::string charDisplay;
+    if (targetChar == ' ') charDisplay = "SPACE";
+    else if (targetChar == '\t') charDisplay = "TAB";
+    else if (targetChar == '\n') charDisplay = "NEWLINE";
+    else if (targetChar >= 32 && targetChar <= 126) charDisplay = std::string(1, targetChar);
+    else charDisplay = "CTRL";
     
-    // Sort characters by frequency for better readability
-    std::vector<std::pair<char, size_t>> sortedChars(charCounts.begin(), charCounts.end());
-    std::sort(sortedChars.begin(), sortedChars.end(), 
-             [](const auto& a, const auto& b) { return a.second > b.second; });
+    double frequency = totalChars > 0 ? (static_cast<double>(occurrences) / totalChars) * 100.0 : 0.0;
     
-    std::cout << "\n=== Character Frequency Distribution ===" << std::endl;
-    std::cout << "Rank | Character | ASCII | Count | Frequency (%)" << std::endl;
-    std::cout << "-----|-----------|-------|-------|-------------" << std::endl;
-    
-    int rank = 1;
-    for (const auto& pair : sortedChars) {
-        char ch = pair.first;
-        size_t count = pair.second;
-        double frequency = (static_cast<double>(count) / totalChars) * 100.0;
-        
-        // Handle special characters for display
-        std::string charDisplay;
-        if (ch == ' ') charDisplay = "SPACE";
-        else if (ch == '\t') charDisplay = "TAB";
-        else if (ch == '\n') charDisplay = "NEWLINE";
-        else if (ch >= 32 && ch <= 126) charDisplay = std::string(1, ch);
-        else charDisplay = "CTRL";
-        
-        std::cout << std::setw(4) << rank << " | " 
-                 << std::setw(9) << charDisplay << " | " 
-                 << std::setw(5) << static_cast<int>(ch) << " | "
-                 << std::setw(5) << count << " | " 
-                 << std::setw(10) << std::setprecision(3) << std::fixed << frequency << std::endl;
-        
-        rank++;
-        if (rank > 20 && !showDetailed) break; // Limit display for readability
-    }
-    
-    if (sortedChars.size() > 20) {
-        std::cout << "... and " << (sortedChars.size() - 20) << " more characters" << std::endl;
-    }
+    std::cout << "Target Character: " << charDisplay << " (ASCII: " << static_cast<int>(targetChar) << ")" << std::endl;
+    std::cout << "Total Characters Analyzed: " << totalChars << std::endl;
+    std::cout << "Occurrences Found: " << occurrences << std::endl;
+    std::cout << "Frequency: " << std::fixed << std::setprecision(6) << frequency << "%" << std::endl;
+    std::cout << "====================================" << std::endl;
 }
 
 /**
- * Export character frequency data to CSV format
+ * Export results to CSV format
  */
-void exportCharacterFrequencyCSV(const std::unordered_map<char, size_t>& charCounts, 
-                               size_t totalChars, const std::string& filename = "character_frequency_serial.csv") {
+void exportResultsCSV(char targetChar, size_t occurrences, size_t totalChars, 
+                     const std::vector<double>& executionTimes, const TestConfiguration& config,
+                     const std::string& filename = "serial_results.csv") {
     std::ofstream file(filename);
     if (!file.is_open()) {
         std::cerr << "Error: Failed to create CSV file: " << filename << std::endl;
         return;
     }
 
-    // Write to file instead of cout
-    file << "Character,ASCII_Code,Count,Frequency_Percent" << std::endl;
+    // Calculate statistics
+    double totalTime = std::accumulate(executionTimes.begin(), executionTimes.end(), 0.0);
+    double avgTime = totalTime / executionTimes.size();
     
-    std::vector<std::pair<char, size_t>> sortedChars(charCounts.begin(), charCounts.end());
-    std::sort(sortedChars.begin(), sortedChars.end(), 
-             [](const auto& a, const auto& b) { return a.first < b.first; });
-    
-    for (const auto& pair : sortedChars) {
-        char ch = pair.first;
-        size_t count = pair.second;
-        double frequency = (static_cast<double>(count) / totalChars) * 100.0;
-        
-        file << "\"" << ch << "\"," << static_cast<int>(ch) << "," 
-             << count << "," << std::fixed << std::setprecision(6) << frequency << std::endl;
+    double variance = 0;
+    for (double time : executionTimes) {
+        variance += (time - avgTime) * (time - avgTime);
     }
-
+    double stdDev = std::sqrt(variance / executionTimes.size());
+    double minTime = *std::min_element(executionTimes.begin(), executionTimes.end());
+    double maxTime = *std::max_element(executionTimes.begin(), executionTimes.end());
+    
+    double avgThroughput = (config.stringLength / (avgTime / 1000.0)) / (1024.0 * 1024.0);
+    double avgCharsPerSec = totalChars / (avgTime / 1000.0);
+    double frequency = totalChars > 0 ? (static_cast<double>(occurrences) / totalChars) * 100.0 : 0.0;
+    
+    // Write metadata and summary
+    file << "# Serial Character Occurrence Counting Results\n";
+    file << "# Configuration\n";
+    file << "Implementation,Serial\n";
+    file << "TargetCharacter," << targetChar << "\n";
+    file << "TargetCharacterASCII," << static_cast<int>(targetChar) << "\n";
+    file << "StringLength," << config.stringLength << "\n";
+    file << "Alignment," << config.alignment << "\n";
+    file << "Repetitions," << config.repetitions << "\n";
+    file << "RandomSeed," << config.randomSeed << "\n";
+    file << "TotalCharacters," << totalChars << "\n";
+    file << "Occurrences," << occurrences << "\n";
+    file << "Frequency," << std::fixed << std::setprecision(6) << frequency << "\n";
+    file << "\n";
+    
+    // Performance summary
+    file << "# Performance Summary\n";
+    file << "Metric,Value,Unit\n";
+    file << "AvgExecutionTime," << avgTime << ",ms\n";
+    file << "StdDeviation," << stdDev << ",ms\n";
+    file << "MinExecutionTime," << minTime << ",ms\n";
+    file << "MaxExecutionTime," << maxTime << ",ms\n";
+    file << "AvgThroughput," << avgThroughput << ",MB/s\n";
+    file << "AvgCharsPerSecond," << avgCharsPerSec << ",chars/s\n";
+    file << "\n";
+    
+    // Individual execution times
+    file << "# Individual Execution Times\n";
+    file << "Run,ExecutionTime_ms,Throughput_MBps,CharsPerSecond\n";
+    for (size_t i = 0; i < executionTimes.size(); ++i) {
+        double throughput = (config.stringLength / (executionTimes[i] / 1000.0)) / (1024.0 * 1024.0);
+        double charsPerSec = totalChars / (executionTimes[i] / 1000.0);
+        file << (i + 1) << "," << executionTimes[i] << "," << throughput << "," << charsPerSec << "\n";
+    }
+    
     file.close();
-    std::cout << "Character frequency data exported to: " << filename << std::endl;
+    std::cout << "Results exported to: " << filename << std::endl;
 }
 
 /**
@@ -157,6 +151,7 @@ void exportCharacterFrequencyCSV(const std::unordered_map<char, size_t>& charCou
 void runPerformanceAnalysis(SerialCharacterCounter& counter, const TestConfiguration& config) {
     std::cout << "\n=== Performance Analysis ===" << std::endl;
     std::cout << "Implementation: " << counter.getImplementationName() << std::endl;
+    std::cout << "Target Character: '" << config.targetCharacter << "' (ASCII: " << static_cast<int>(config.targetCharacter) << ")" << std::endl;
     std::cout << "String Length: " << config.stringLength << " bytes" << std::endl;
     std::cout << "Memory Alignment: " << config.alignment << " bytes" << std::endl;
     std::cout << "Repetitions: " << config.repetitions << std::endl;
@@ -169,25 +164,24 @@ void runPerformanceAnalysis(SerialCharacterCounter& counter, const TestConfigura
         std::cout << "\nGenerating deterministic random string..." << std::endl;
         void* aligned = generator.generateAlignedString(config.stringLength, config.alignment);
         
-        std::cout << "Running character frequency analysis..." << std::endl;
+        std::cout << "Searching for character '" << config.targetCharacter << "'..." << std::endl;
         
         // Performance measurements
         std::vector<double> executionTimes;
-        std::unordered_map<char, size_t> finalCharCounts;
+        size_t totalOccurrences = 0;
         
         // Run multiple repetitions with same string
         for (int rep = 0; rep < config.repetitions; ++rep) {
             PerformanceMetrics metrics;
-            metrics.alignment = config.alignment;
             
-            auto charCounts = counter.countAllCharacters(
-                static_cast<char*>(aligned), config.stringLength, metrics);
+            size_t occurrences = counter.countCharacterOccurrences(
+                static_cast<char*>(aligned), config.stringLength, config.targetCharacter, metrics);
             
             executionTimes.push_back(metrics.executionTimeMs);
             
-            // Store character counts from first run (should be identical across runs)
+            // Store occurrences from first run (should be identical across runs)
             if (rep == 0) {
-                finalCharCounts = charCounts;
+                totalOccurrences = occurrences;
             }
             
             // Show progress for long tests
@@ -216,13 +210,11 @@ void runPerformanceAnalysis(SerialCharacterCounter& counter, const TestConfigura
         double avgThroughput = (config.stringLength / (avgTime / 1000.0)) / (1024.0 * 1024.0);
         double avgCharsPerSec = totalChars / (avgTime / 1000.0);
         
-        // Display performance results
-        std::cout << "\n=== Character Analysis Results ===" << std::endl;
-        std::cout << std::fixed << std::setprecision(6);
-        std::cout << "Total Characters Analyzed: " << totalChars << std::endl;
-        std::cout << "Unique Characters Found: " << finalCharCounts.size() << std::endl;
+        // Display results
+        displayCharacterOccurrences(config.targetCharacter, totalOccurrences, totalChars);
         
         std::cout << "\n=== Performance Results ===" << std::endl;
+        std::cout << std::fixed << std::setprecision(6);
         std::cout << "Average Execution Time: " << avgTime << " ms" << std::endl;
         std::cout << "Standard Deviation: " << stdDev << " ms" << std::endl;
         std::cout << "Min Execution Time: " << minTime << " ms" << std::endl;
@@ -237,20 +229,15 @@ void runPerformanceAnalysis(SerialCharacterCounter& counter, const TestConfigura
         std::cout << "Alignment Check: " << (address % config.alignment == 0 ? "PASSED" : "FAILED") << std::endl;
         std::cout << "Address modulo alignment: " << (address % config.alignment) << std::endl;
         
-        // Display character frequency analysis
-        displayCharacterFrequency(finalCharCounts, totalChars, config.showDetailedFrequency);
-        
-        // CSV output for analysis scripts
+        // CSV output
         if (config.exportCSV) {
-            std::cout << "\n=== Performance CSV Export ===" << std::endl;
-            std::cout << "StringLength,Alignment,TotalChars,UniqueChars,AvgTimeMs,StdDevMs,MinTimeMs,MaxTimeMs,ThroughputMBps,CharsPerSec" << std::endl;
-            std::cout << config.stringLength << "," << config.alignment << "," << totalChars << "," 
-                      << finalCharCounts.size() << "," << avgTime << "," << stdDev << "," << minTime << "," << maxTime << "," 
+            std::cout << "\n=== CSV Export ===" << std::endl;
+            std::cout << "StringLength,Alignment,TargetChar,TotalChars,Occurrences,AvgTimeMs,StdDevMs,MinTimeMs,MaxTimeMs,ThroughputMBps,CharsPerSec" << std::endl;
+            std::cout << config.stringLength << "," << config.alignment << "," << config.targetCharacter << "," << totalChars << "," 
+                      << totalOccurrences << "," << avgTime << "," << stdDev << "," << minTime << "," << maxTime << "," 
                       << avgThroughput << "," << avgCharsPerSec << std::endl;
             
-            // Export character frequency data
-            exportCharacterFrequencyCSV(finalCharCounts, totalChars, "character_frequency_serial.csv");
-            exportPerformanceDataCSV(executionTimes, config, finalCharCounts, "performance_data_serial.csv");
+            exportResultsCSV(config.targetCharacter, totalOccurrences, totalChars, executionTimes, config, "serial_results.csv");
         }
         
         generator.freeAlignedString(aligned);
@@ -260,271 +247,10 @@ void runPerformanceAnalysis(SerialCharacterCounter& counter, const TestConfigura
         throw;
     }
 }
-/**
- * Export comprehensive performance data to CSV file
- */
-void exportPerformanceDataCSV(const std::vector<double>& executionTimes,
-                             const TestConfiguration& config,
-                             const std::unordered_map<char, size_t>& charCounts,
-                             const std::string& filename = "performance_data_serial.csv") {
-    
-    std::string csvFilename = filename;
-   
-    
-    std::ofstream file(csvFilename);
-    if (!file.is_open()) {
-        std::cerr << "Failed to create CSV file: " << csvFilename << std::endl;
-        return;
-    }
-    
-    // Calculate statistics
-    double totalTime = std::accumulate(executionTimes.begin(), executionTimes.end(), 0.0);
-    double avgTime = totalTime / executionTimes.size();
-    
-    double variance = 0;
-    for (double time : executionTimes) {
-        variance += (time - avgTime) * (time - avgTime);
-    }
-    double stdDev = std::sqrt(variance / executionTimes.size());
-    double minTime = *std::min_element(executionTimes.begin(), executionTimes.end());
-    double maxTime = *std::max_element(executionTimes.begin(), executionTimes.end());
-    
-    size_t totalChars = config.stringLength - 1;
-    double avgThroughput = (config.stringLength / (avgTime / 1000.0)) / (1024.0 * 1024.0);
-    double avgCharsPerSec = totalChars / (avgTime / 1000.0);
-    
-    // Write metadata and summary statistics
-    file << "# Serial Character Frequency Analysis Results\n";
-    file << "# Configuration\n";
-    file << "StringLength," << config.stringLength << "\n";
-    file << "Alignment," << config.alignment << "\n";
-    file << "Repetitions," << config.repetitions << "\n";
-    file << "RandomSeed," << config.randomSeed << "\n";
-    file << "TotalCharacters," << totalChars << "\n";
-    file << "UniqueCharacters," << charCounts.size() << "\n";
-    file << "\n";
-    
-    // Summary statistics
-    file << "# Performance Summary\n";
-    file << "Metric,Value,Unit\n";
-    file << "AvgExecutionTime," << std::fixed << std::setprecision(6) << avgTime << ",ms\n";
-    file << "StdDeviation," << stdDev << ",ms\n";
-    file << "MinExecutionTime," << minTime << ",ms\n";
-    file << "MaxExecutionTime," << maxTime << ",ms\n";
-    file << "AvgThroughput," << avgThroughput << ",MB/s\n";
-    file << "AvgCharsPerSecond," << avgCharsPerSec << ",chars/s\n";
-    file << "\n";
-    
-    // Individual execution times
-    file << "# Individual Execution Times\n";
-    file << "Run,ExecutionTime_ms,Throughput_MBps,CharsPerSecond\n";
-    for (size_t i = 0; i < executionTimes.size(); ++i) {
-        double throughput = (config.stringLength / (executionTimes[i] / 1000.0)) / (1024.0 * 1024.0);
-        double charsPerSec = totalChars / (executionTimes[i] / 1000.0);
-        file << (i + 1) << "," << executionTimes[i] << "," << throughput << "," << charsPerSec << "\n";
-    }
-    file << "\n";
-    
-    // Character frequency data
-    file << "# Character Frequency Analysis\n";
-    file << "Character,ASCII_Code,Count,Frequency_Percent,Printable\n";
-    
-    // Sort by frequency for better analysis
-    std::vector<std::pair<char, size_t>> sortedChars(charCounts.begin(), charCounts.end());
-    std::sort(sortedChars.begin(), sortedChars.end(), 
-             [](const auto& a, const auto& b) { return a.second > b.second; });
-    
-    for (const auto& pair : sortedChars) {
-        char ch = pair.first;
-        size_t count = pair.second;
-        double frequency = (static_cast<double>(count) / totalChars) * 100.0;
-        bool isPrintable = (ch >= 32 && ch <= 126);
-        
-        // Escape special characters for CSV
-        std::string charStr;
-        if (ch == '"') charStr = "\"\"\"\"";  // Escape quotes
-        else if (ch == ',') charStr = "\",\"";  // Escape commas
-        else if (ch == '\n') charStr = "\\n";
-        else if (ch == '\r') charStr = "\\r";
-        else if (ch == '\t') charStr = "\\t";
-        else if (isPrintable) charStr = std::string(1, ch);
-        else charStr = "\\x" + std::to_string(static_cast<unsigned char>(ch));
-        
-        file << "\"" << charStr << "\"," << static_cast<int>(ch) << "," 
-             << count << "," << std::fixed << std::setprecision(6) << frequency << "," 
-             << (isPrintable ? "Yes" : "No") << "\n";
-    }
-    
-    file.close();
-    std::cout << "Performance data exported to: " << csvFilename << std::endl;
-}
-
-
-/**
- * Export character distribution for statistical analysis
- */
-void exportCharacterDistributionCSV(const std::unordered_map<char, size_t>& charCounts,
-                                  size_t totalChars,
-                                  const std::string& filename = "") {
-    
-    std::string csvFilename = filename;
-    if (csvFilename.empty()) {
-        auto now = std::time(nullptr);
-        auto tm = *std::localtime(&now);
-        char timestamp[100];
-        std::strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", &tm);
-        csvFilename = "char_distribution_" + std::string(timestamp) + ".csv";
-    }
-    
-    std::ofstream file(csvFilename);
-    if (!file.is_open()) {
-        std::cerr << "Failed to create character distribution CSV file: " << csvFilename << std::endl;
-        return;
-    }
-    
-    // Write metadata
-    file << "# Character Distribution Analysis\n";
-    file << "TotalCharacters," << totalChars << "\n";
-    file << "UniqueCharacters," << charCounts.size() << "\n";
-    file << "\n";
-    
-    // Create different views of the data
-    
-    // 1. Frequency-sorted view
-    file << "# Frequency Sorted Data\n";
-    file << "Rank,Character,ASCII_Code,Count,Frequency_Percent,Category\n";
-    
-    std::vector<std::pair<char, size_t>> sortedByFreq(charCounts.begin(), charCounts.end());
-    std::sort(sortedByFreq.begin(), sortedByFreq.end(), 
-             [](const auto& a, const auto& b) { return a.second > b.second; });
-    
-    int rank = 1;
-    for (const auto& pair : sortedByFreq) {
-        char ch = pair.first;
-        size_t count = pair.second;
-        double frequency = (static_cast<double>(count) / totalChars) * 100.0;
-        
-        std::string category;
-        if (ch >= 'A' && ch <= 'Z') category = "Uppercase";
-        else if (ch >= 'a' && ch <= 'z') category = "Lowercase";
-        else if (ch >= '0' && ch <= '9') category = "Digit";
-        else if (ch == ' ') category = "Space";
-        else if (ch >= 32 && ch <= 126) category = "Punctuation";
-        else if (ch == '\t') category = "Tab";
-        else if (ch == '\n') category = "Newline";
-        else category = "Control";
-        
-        std::string charDisplay = (ch >= 32 && ch <= 126) ? std::string(1, ch) : 
-                                 ("\\x" + std::to_string(static_cast<unsigned char>(ch)));
-        
-        file << rank << ",\"" << charDisplay << "\"," << static_cast<int>(ch) << "," 
-             << count << "," << std::fixed << std::setprecision(6) << frequency << "," 
-             << category << "\n";
-        rank++;
-    }
-    file << "\n";
-    
-    // 2. ASCII-sorted view for pattern analysis
-    file << "# ASCII Sorted Data\n";
-    file << "ASCII_Code,Character,Count,Frequency_Percent,Category\n";
-    
-    std::vector<std::pair<char, size_t>> sortedByASCII(charCounts.begin(), charCounts.end());
-    std::sort(sortedByASCII.begin(), sortedByASCII.end(), 
-             [](const auto& a, const auto& b) { return a.first < b.first; });
-    
-    for (const auto& pair : sortedByASCII) {
-        char ch = pair.first;
-        size_t count = pair.second;
-        double frequency = (static_cast<double>(count) / totalChars) * 100.0;
-        
-        std::string category;
-        if (ch >= 'A' && ch <= 'Z') category = "Uppercase";
-        else if (ch >= 'a' && ch <= 'z') category = "Lowercase";
-        else if (ch >= '0' && ch <= '9') category = "Digit";
-        else if (ch == ' ') category = "Space";
-        else if (ch >= 32 && ch <= 126) category = "Punctuation";
-        else category = "Control";
-        
-        std::string charDisplay = (ch >= 32 && ch <= 126) ? std::string(1, ch) : 
-                                 ("\\x" + std::to_string(static_cast<unsigned char>(ch)));
-        
-        file << static_cast<int>(ch) << ",\"" << charDisplay << "\"," 
-             << count << "," << std::fixed << std::setprecision(6) << frequency << "," 
-             << category << "\n";
-    }
-    
-    file.close();
-    std::cout << "Character distribution data exported to: " << csvFilename << std::endl;
-}
-
-/**
- * Export summary statistics for comparison studies
- */
-void exportSummaryStatsCSV(const TestConfiguration& config,
-                          const std::vector<double>& executionTimes,
-                          const std::unordered_map<char, size_t>& charCounts,
-                          const std::string& filename = "") {
-    
-    std::string csvFilename = filename;
-    if (csvFilename.empty()) {
-        csvFilename = "serial_summary_stats.csv";
-    }
-    
-    // Check if file exists to determine if we need headers
-    bool fileExists = std::ifstream(csvFilename).good();
-    
-    std::ofstream file(csvFilename, std::ios::app);  // Append mode
-    if (!file.is_open()) {
-        std::cerr << "Failed to create summary stats CSV file: " << csvFilename << std::endl;
-        return;
-    }
-    
-    // Write headers if new file
-    if (!fileExists) {
-        file << "Timestamp,Implementation,StringLength,Alignment,Repetitions,RandomSeed,";
-        file << "TotalChars,UniqueChars,AvgTime_ms,StdDev_ms,MinTime_ms,MaxTime_ms,";
-        file << "AvgThroughput_MBps,AvgCharsPerSec,CharDensity_Percent\n";
-    }
-    
-    // Calculate statistics
-    double totalTime = std::accumulate(executionTimes.begin(), executionTimes.end(), 0.0);
-    double avgTime = totalTime / executionTimes.size();
-    
-    double variance = 0;
-    for (double time : executionTimes) {
-        variance += (time - avgTime) * (time - avgTime);
-    }
-    double stdDev = std::sqrt(variance / executionTimes.size());
-    double minTime = *std::min_element(executionTimes.begin(), executionTimes.end());
-    double maxTime = *std::max_element(executionTimes.begin(), executionTimes.end());
-    
-    size_t totalChars = config.stringLength - 1;
-    double avgThroughput = (config.stringLength / (avgTime / 1000.0)) / (1024.0 * 1024.0);
-    double avgCharsPerSec = totalChars / (avgTime / 1000.0);
-    double charDensity = static_cast<double>(charCounts.size()) / totalChars * 100.0;
-    
-    // Generate timestamp
-    auto now = std::time(nullptr);
-    auto tm = *std::localtime(&now);
-    char timestamp[100];
-    std::strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", &tm);
-    
-    // Write data row
-    file << timestamp << ",Serial," << config.stringLength << "," << config.alignment << ","
-         << config.repetitions << "," << config.randomSeed << "," << totalChars << ","
-         << charCounts.size() << "," << std::fixed << std::setprecision(6)
-         << avgTime << "," << stdDev << "," << minTime << "," << maxTime << ","
-         << avgThroughput << "," << avgCharsPerSec << "," << charDensity << "\n";
-    
-    file.close();
-    std::cout << "Summary statistics appended to: " << csvFilename << std::endl;
-}
-
-
 
 int main() {
     std::cout << "======================================================" << std::endl;
-    std::cout << "   Serial Character Frequency Analysis               " << std::endl;
+    std::cout << "   Serial Character Occurrence Counting             " << std::endl;
     std::cout << "   CE-4302 Arquitectura de Computadores II           " << std::endl;
     std::cout << "======================================================" << std::endl;
     
@@ -538,13 +264,12 @@ int main() {
         // Run main performance analysis
         runPerformanceAnalysis(counter, config);
         
-        
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
         return 1;
     }
     
-    std::cout << "\nSerial character frequency analysis completed successfully!" << std::endl;
+    std::cout << "\nSerial character occurrence counting completed successfully!" << std::endl;
     
     return 0;
 }

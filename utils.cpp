@@ -6,10 +6,11 @@
 void PerformanceMetrics::print() const {
     std::cout << std::fixed << std::setprecision(6);
     std::cout << "=== Performance Metrics ===" << std::endl;
+    std::cout << "Target Character: '" << targetCharacter << "' (ASCII: " << static_cast<int>(targetCharacter) << ")" << std::endl;
     std::cout << "String Length: " << stringLength << " bytes" << std::endl;
     std::cout << "Memory Alignment: " << alignment << " bytes" << std::endl;
     std::cout << "Total Characters: " << totalCharacters << std::endl;
-    std::cout << "Unique Characters: " << uniqueCharacters << std::endl;
+    std::cout << "Occurrences Found: " << occurrences << std::endl;
     std::cout << "Execution Time: " << executionTimeMs << " ms" << std::endl;
     std::cout << "Memory Used: " << memoryUsedBytes << " bytes" << std::endl;
     std::cout << "Throughput: " << getThroughputMBps() << " MB/s" << std::endl;
@@ -18,13 +19,13 @@ void PerformanceMetrics::print() const {
 }
 
 void PerformanceMetrics::printCSVHeader() const {
-    std::cout << "StringLength,Alignment,TotalChars,UniqueChars,ExecutionTimeMs,ThroughputMBps,CharsPerSecond" << std::endl;
+    std::cout << "StringLength,Alignment,TargetChar,TotalChars,Occurrences,ExecutionTimeMs,ThroughputMBps,CharsPerSecond" << std::endl;
 }
 
 void PerformanceMetrics::printCSVRow() const {
     std::cout << std::fixed << std::setprecision(6);
-    std::cout << stringLength << "," << alignment << "," << totalCharacters << "," 
-              << uniqueCharacters << "," << executionTimeMs << "," 
+    std::cout << stringLength << "," << alignment << "," << targetCharacter << "," << totalCharacters << "," 
+              << occurrences << "," << executionTimeMs << "," 
               << getThroughputMBps() << "," << getCharactersPerSecond() << std::endl;
 }
 
@@ -113,7 +114,17 @@ void RandomStringGenerator::generateRandomUTF8(char* buffer, size_t length) {
 TestConfiguration getUserConfiguration() {
     TestConfiguration config;
     
-    std::cout << "\n=== Character Frequency Analysis Configuration ===" << std::endl;
+    std::cout << "\n=== Character Occurrence Counting Configuration ===" << std::endl;
+    
+    // Get target character
+    std::cout << "Enter the character to search for: ";
+    std::cin >> config.targetCharacter;
+    
+    if (std::cin.fail()) {
+        std::cin.clear();
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        throw std::invalid_argument("Invalid character input");
+    }
     
     // Get string length
     do {
@@ -157,11 +168,11 @@ TestConfiguration getUserConfiguration() {
         break;
     } while (true);
     
-    // Ask for detailed frequency results
+    // Ask for detailed results
     char showDetailed;
-    std::cout << "Show detailed character frequency analysis? (y/n): ";
+    std::cout << "Show detailed results? (y/n): ";
     std::cin >> showDetailed;
-    config.showDetailedFrequency = (showDetailed == 'y' || showDetailed == 'Y');
+    config.showDetailedResults = (showDetailed == 'y' || showDetailed == 'Y');
     
     // Ask for CSV export
     char exportCSV;
@@ -172,7 +183,8 @@ TestConfiguration getUserConfiguration() {
     // Set deterministic seed for reproducible results
     config.randomSeed = 42;
     
-    std::cout << "Using deterministic seed: " << config.randomSeed << " (for SIMD comparison)" << std::endl;
+    std::cout << "Using deterministic seed: " << config.randomSeed << " (for reproducible results)" << std::endl;
+    std::cout << "Target character: '" << config.targetCharacter << "' (ASCII: " << static_cast<int>(config.targetCharacter) << ")" << std::endl;
     
     return config;
 }
@@ -188,6 +200,11 @@ void validateConfiguration(const TestConfiguration& config) {
     
     if (config.repetitions < 1 || config.repetitions > 1000) {
         throw std::invalid_argument("Repetitions must be between 1 and 1000");
+    }
+    
+    // Validate target character (should be printable ASCII for this workshop)
+    if (config.targetCharacter < 32 || config.targetCharacter > 126) {
+        std::cout << "Warning: Target character is not printable ASCII. Results may vary." << std::endl;
     }
 }
 

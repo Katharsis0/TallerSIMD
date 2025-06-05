@@ -13,6 +13,7 @@
 #include <memory>
 #include <chrono>
 #include <iomanip>
+#include <limits>
 
 /**
  * Performance metrics structure to standardize measurements
@@ -24,7 +25,8 @@ struct PerformanceMetrics {
     size_t stringLength = 0;
     size_t alignment = 0;
     size_t totalCharacters = 0;       // Total characters processed
-    size_t uniqueCharacters = 0;      // Number of unique characters found
+    char targetCharacter = '\0';      // Character being searched for
+    size_t occurrences = 0;           // Number of occurrences found
     
     void print() const;
     void printCSVHeader() const;
@@ -84,14 +86,15 @@ public:
     virtual ~CharacterCounterBase() = default;
     
     /**
-     * Count ALL characters in string and return frequency map
+     * Count occurrences of a specific character in string
      * @param str Input string
      * @param length String length (including null terminator)
+     * @param targetChar Character to search for
      * @param metrics Output performance metrics
-     * @return Map of character frequencies
+     * @return Number of occurrences found
      */
-    virtual std::unordered_map<char, size_t> countAllCharacters(const char* str, size_t length, 
-                                                              PerformanceMetrics& metrics) = 0;
+    virtual size_t countCharacterOccurrences(const char* str, size_t length, char targetChar,
+                                           PerformanceMetrics& metrics) = 0;
     
     /**
      * Get implementation name for reporting
@@ -107,8 +110,9 @@ struct TestConfiguration {
     size_t alignment;
     int repetitions;
     bool exportCSV;
-    bool showDetailedFrequency;
+    bool showDetailedResults;
     uint32_t randomSeed;
+    char targetCharacter;             // Character to search for
 };
 
 /**
