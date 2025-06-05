@@ -3,8 +3,7 @@
 Performance comparison plot between SIMD and Serial implementations
 CE-4302 Arquitectura de Computadores II - Taller 02
 
-This script creates a focused comparison with specific string sizes:
-8, 64, 256, 512, 1024, 2048, 4096 bytes with single sample per test.
+16, 32, 64, 256, 512, 1024, 2048, 4096 bytes with single sample per test.
 """
 
 import subprocess
@@ -24,7 +23,7 @@ class PerformanceComparison:
         }
         
     def run_single_test(self, executable: str, string_length: int, alignment: int = 16, 
-                       target_char: str = 'a') -> Dict:
+                   target_char: str = 'a') -> Dict:
         """Run a single performance test with one repetition"""
         
         # Single repetition as requested
@@ -37,13 +36,14 @@ class PerformanceComparison:
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True
+                text=True,
+                bufsize=1  # Añadir bufsize para evitar el error
             )
             
             stdout, stderr = process.communicate(input=input_data, timeout=30)
             
             if process.returncode != 0:
-                print(f"Error running {executable}: {stderr}")
+                print(f"Error running {executable} (return code {process.returncode}): {stderr}")
                 return None
                 
             # Parse the CSV output from stdout
@@ -74,7 +74,7 @@ class PerformanceComparison:
             print(f"Error running {executable}: {e}")
             return None
     
-    def run_comparison_tests(self, string_sizes: List[int], target_char: str = 'a', alignment: int = 16):
+    def run_comparison_tests(self, string_sizes: List[int], target_char: str = ';', alignment: int = 16):
         """Run comparison tests for specified string sizes"""
         
         print("=== Performance Comparison: SIMD vs Serial ===")
@@ -115,7 +115,8 @@ class PerformanceComparison:
             else:
                 print("    SIMD: FAILED")
             print()
-            # Validación cruzada para el mayor tamaño
+        # Validación cruzada para el mayor tamaño
+        # Validación cruzada para el mayor tamaño
         max_size = max(string_sizes)
         print(f"\n=== Cross-validation for size: {max_size} ===")
 
@@ -123,17 +124,54 @@ class PerformanceComparison:
         input_data = f"{target_char}\n{max_size}\n{alignment}\n1\nn\nn\n"
 
         # Ejecutar serial y capturar resultado
-        process = subprocess.Popen([self.serial_executable], ...)
-        # ... procesar salida para obtener conteo serial ...
+        serial_count = None
+        try:
+            process = subprocess.Popen(
+                [self.serial_executable],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            stdout, stderr = process.communicate(input=input_data, timeout=30)
+            
+            if process.returncode == 0:
+                # Parsear el conteo serial del output
+                for line in stdout.split('\n'):
+                    if "Occurrences Found:" in line:
+                        serial_count = int(line.split(':')[1].strip())
+                        break
+        except Exception as e:
+            print(f"Error running serial validation: {e}")
 
         # Ejecutar SIMD con misma cadena
-        process = subprocess.Popen([self.simd_executable], ...)
-        # ... procesar salida para obtener conteo SIMD ...
+        simd_count = None
+        try:
+            process = subprocess.Popen(
+                [self.simd_executable],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            stdout, stderr = process.communicate(input=input_data, timeout=30)
+            
+            if process.returncode == 0:
+                # Parsear el conteo SIMD del output
+                for line in stdout.split('\n'):
+                    if "Occurrences Found:" in line:
+                        simd_count = int(line.split(':')[1].strip())
+                        break
+        except Exception as e:
+            print(f"Error running SIMD validation: {e}")
 
-        if serial_count != simd_count:
-            print(f"VALIDATION FAILED! Serial: {serial_count}, SIMD: {simd_count}")
+        if serial_count is not None and simd_count is not None:
+            if serial_count != simd_count:
+                print(f"VALIDATION FAILED! Serial: {serial_count}, SIMD: {simd_count}")
+            else:
+                print(f"Validation passed! Results match: {serial_count} occurrences")
         else:
-            print("Validation passed! Results match.")
+            print("Validation incomplete - could not get results from both implementations")
 
             
     
@@ -312,8 +350,10 @@ class PerformanceComparison:
         print("="*80)
 
 def main():
-    STRING_SIZES = [8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384]  # Más tamaños
-    ALIGNMENTS = [16, 64]  # Dos alineamientos diferentes
+    # Tamaños válidos (mínimo 16 bytes según tu implementación)
+    STRING_SIZES = [16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384]
+    ALIGNMENTS = [16, 64]
+    TARGET_CHAR = ';'  # Definir la variable que faltaba
     
     # Check if executables exist
     if not os.path.exists("./char_count_serial"):
@@ -327,14 +367,12 @@ def main():
     for alignment in ALIGNMENTS:
         print(f"\n=== Testing with alignment: {alignment} bytes ===")
         comparison = PerformanceComparison()
-        comparison.run_comparison_tests(STRING_SIZES, ';', alignment)
+        comparison.run_comparison_tests(STRING_SIZES, TARGET_CHAR, alignment)
         comparison.create_performance_plots(f"comparison_plots_align{alignment}")
+        comparison.print_summary_table()
     
-        print(f"\nPerformance comparison completed!")
-        print(f"String sizes tested: {STRING_SIZES}")
-        print(f"Target character: '{TARGET_CHAR}'")
-        print(f"Memory alignment: {ALIGNMENT} bytes")
-        print(f"Samples per test: 1")
+    print("\nPerformance comparison completed!")
+
 
 if __name__ == "__main__":
     main()
