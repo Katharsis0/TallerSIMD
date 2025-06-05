@@ -2,7 +2,6 @@
 """
 CE-4302 Arquitectura de Computadores II - Taller 02
 """
-
 import subprocess
 import matplotlib.pyplot as plt
 import numpy as np
@@ -15,15 +14,15 @@ class PerformanceComparison:
         self.serial_executable = serial_executable
         self.simd_executable = simd_executable
         self.results = {
-            'Serial': {'sizes': [], 'times': [], 'throughputs': []},
-            'SIMD': {'sizes': [], 'times': [], 'throughputs': []}
+            'Serial_16': {'sizes': [], 'times': [], 'throughputs': []},
+            'SIMD_16': {'sizes': [], 'times': [], 'throughputs': []},
+            'SIMD_unaligned': {'sizes': [], 'times': [], 'throughputs': []}
         }
         
     def run_single_test(self, executable: str, string_length: int, alignment: int = 16, 
                    target_char: str = ';', repetitions: int = 100) -> Dict:
         """Run a single performance test with multiple repetitions for better timing resolution"""
         
-        # Use more repetitions for better timing precision
         input_data = f"{target_char}\n{string_length}\n{alignment}\n{repetitions}\nn\ny\n"
         
         try:
@@ -33,7 +32,6 @@ class PerformanceComparison:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True
-                # Removed bufsize parameter that was causing the error
             )
             
             stdout, stderr = process.communicate(input=input_data, timeout=60)
@@ -47,7 +45,6 @@ class PerformanceComparison:
             
             for line in lines:
                 if 'StringLength,Alignment,TargetChar,TotalChars,Occurrences,AvgTimeMs' in line:
-                    # Next line should be the data
                     idx = lines.index(line)
                     if idx + 1 < len(lines):
                         csv_line = lines[idx + 1]
@@ -70,14 +67,13 @@ class PerformanceComparison:
             print(f"Error running {executable}: {e}")
             return None
     
-    def run_comparison_tests(self, string_sizes: List[int], target_char: str = ';', alignment: int = 16):
+    def run_comparison_tests(self, string_sizes: List[int], target_char: str = ';'):
         """Run comparison tests for specified string sizes"""
         
-        print("=== Performance Comparison: SIMD vs Serial ===")
+        print("=== Performance Comparison ===")
         print(f"String sizes: {string_sizes}")
         print(f"Target character: '{target_char}'")
-        print(f"Memory alignment: {alignment} bytes")
-        print(f"Repetitions per test: Variable (more for smaller sizes)\n")
+        print("Testing: Serial (16B aligned), SIMD (16B aligned), SIMD (unaligned)\n")
         
         for size in string_sizes:
             print(f"Testing string length: {size} bytes")
@@ -92,273 +88,107 @@ class PerformanceComparison:
             
             print(f"  Using {repetitions} repetitions for this size")
             
-            # Test Serial implementation
-            print("  Running Serial implementation...")
-            serial_result = self.run_single_test(self.serial_executable, size, alignment, target_char, repetitions)
+            # Test Serial implementation (16-byte aligned)
+            print("  Running Serial implementation (16B aligned)...")
+            serial_result = self.run_single_test(self.serial_executable, size, 16, target_char, repetitions)
             
             if serial_result:
-                self.results['Serial']['sizes'].append(size)
-                self.results['Serial']['times'].append(serial_result['avg_time_ms'])
-                self.results['Serial']['throughputs'].append(serial_result['throughput_mbps'])
-                print(f"    Serial: {serial_result['avg_time_ms']:.6f} ms, {serial_result['throughput_mbps']:.1f} MB/s")
-            else:
-                print("    Serial: FAILED")
+                self.results['Serial_16']['sizes'].append(size)
+                self.results['Serial_16']['times'].append(serial_result['avg_time_ms'])
+                self.results['Serial_16']['throughputs'].append(serial_result['throughput_mbps'])
+                print(f"    Serial (16B): {serial_result['avg_time_ms']:.6f} ms")
             
-            # Test SIMD implementation
-            print("  Running SIMD implementation...")
-            simd_result = self.run_single_test(self.simd_executable, size, alignment, target_char, repetitions)
+            # Test SIMD implementation (16-byte aligned)
+            print("  Running SIMD implementation (16B aligned)...")
+            simd_result = self.run_single_test(self.simd_executable, size, 16, target_char, repetitions)
             
             if simd_result:
-                self.results['SIMD']['sizes'].append(size)
-                self.results['SIMD']['times'].append(simd_result['avg_time_ms'])
-                self.results['SIMD']['throughputs'].append(simd_result['throughput_mbps'])
-                print(f"    SIMD:   {simd_result['avg_time_ms']:.6f} ms, {simd_result['throughput_mbps']:.1f} MB/s")
-                
-                # Calculate speedup if both results available
-                if serial_result:
-                    speedup = serial_result['avg_time_ms'] / simd_result['avg_time_ms']
-                    print(f"    Speedup: {speedup:.2f}x")
-            else:
-                print("    SIMD: FAILED")
+                self.results['SIMD_16']['sizes'].append(size)
+                self.results['SIMD_16']['times'].append(simd_result['avg_time_ms'])
+                self.results['SIMD_16']['throughputs'].append(simd_result['throughput_mbps'])
+                print(f"    SIMD (16B):   {simd_result['avg_time_ms']:.6f} ms")
+            
+            # Test SIMD implementation (unaligned)
+            print("  Running SIMD implementation (unaligned)...")
+            simd_unaligned_result = self.run_single_test(self.simd_executable, size, 1, target_char, repetitions)
+            
+            if simd_unaligned_result:
+                self.results['SIMD_unaligned']['sizes'].append(size)
+                self.results['SIMD_unaligned']['times'].append(simd_unaligned_result['avg_time_ms'])
+                self.results['SIMD_unaligned']['throughputs'].append(simd_unaligned_result['throughput_mbps'])
+                print(f"    SIMD (unaligned): {simd_unaligned_result['avg_time_ms']:.6f} ms")
+            
             print()
-        
-        # Cross-validation for the largest size
-        max_size = max(string_sizes)
-        print(f"\n=== Cross-validation for size: {max_size} ===")
-
-        # Get the same string for both implementations - using fewer repetitions for validation
-        input_data = f"{target_char}\n{max_size}\n{alignment}\n1\nn\nn\n"
-
-        # Run serial and capture result
-        serial_count = None
-        try:
-            process = subprocess.Popen(
-                [self.serial_executable],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
-            )
-            stdout, stderr = process.communicate(input=input_data, timeout=30)
-            
-            if process.returncode == 0:
-                # Parse serial count from output
-                for line in stdout.split('\n'):
-                    if "Occurrences Found:" in line:
-                        serial_count = int(line.split(':')[1].strip())
-                        break
-        except Exception as e:
-            print(f"Error running serial validation: {e}")
-
-        # Run SIMD with same string
-        simd_count = None
-        try:
-            process = subprocess.Popen(
-                [self.simd_executable],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
-            )
-            stdout, stderr = process.communicate(input=input_data, timeout=30)
-            
-            if process.returncode == 0:
-                # Parse SIMD count from output
-                for line in stdout.split('\n'):
-                    if "Occurrences Found:" in line:
-                        simd_count = int(line.split(':')[1].strip())
-                        break
-        except Exception as e:
-            print(f"Error running SIMD validation: {e}")
-
-        if serial_count is not None and simd_count is not None:
-            if serial_count != simd_count:
-                print(f"VALIDATION FAILED! Serial: {serial_count}, SIMD: {simd_count}")
-            else:
-                print(f"Validation passed! Results match: {serial_count} occurrences")
-        else:
-            print("Validation incomplete - could not get results from both implementations")
     
-    def create_performance_plots(self, output_dir: str = "comparison_plots"):
-        """Create performance comparison plots"""
-        
-        if not self.results['Serial']['sizes'] or not self.results['SIMD']['sizes']:
-            print("Insufficient data to create plots")
+    def create_normalized_time_plot(self, output_dir: str = "comparison_plots"):
+        """Create a single plot comparing normalized execution times"""
+    
+        if not (self.results['Serial_16']['sizes'] and self.results['SIMD_16']['sizes'] and self.results['SIMD_unaligned']['sizes']):
+            print("Insufficient data to create plot")
             return
         
         os.makedirs(output_dir, exist_ok=True)
         
-        # Create execution time comparison plot
-        self._create_execution_time_plot(output_dir)
-        
-        # Create throughput comparison plot
-        self._create_throughput_plot(output_dir)
-        
-        # Create speedup plot
-        self._create_speedup_plot(output_dir)
-        
-        print(f"All plots saved in: {output_dir}")
-    
-    def _create_execution_time_plot(self, output_dir: str):
-        """Create execution time comparison plot"""
-        
         plt.figure(figsize=(12, 8))
         
-        # Plot Serial results
-        serial_sizes = self.results['Serial']['sizes']
-        serial_times = self.results['Serial']['times']
-        plt.loglog(serial_sizes, serial_times, 'b-o', label='Serial Implementation', 
-                  linewidth=3, markersize=8, markerfacecolor='lightblue', markeredgecolor='blue')
+        # Get common sizes where all three implementations have data
+        common_sizes = sorted(set(self.results['Serial_16']['sizes']) & 
+                            set(self.results['SIMD_16']['sizes']) & 
+                            set(self.results['SIMD_unaligned']['sizes']))
         
-        # Plot SIMD results
-        simd_sizes = self.results['SIMD']['sizes']
-        simd_times = self.results['SIMD']['times']
-        plt.loglog(simd_sizes, simd_times, 'r-s', label='SIMD Implementation (SSE4.2)', 
-                  linewidth=3, markersize=8, markerfacecolor='lightcoral', markeredgecolor='red')
+        if not common_sizes:
+            print("No common sizes found for all implementations")
+            return
+        
+        # Get execution times for common sizes
+        serial_times = [self.results['Serial_16']['times'][self.results['Serial_16']['sizes'].index(size)] for size in common_sizes]
+        simd_16_times = [self.results['SIMD_16']['times'][self.results['SIMD_16']['sizes'].index(size)] for size in common_sizes]
+        simd_unaligned_times = [self.results['SIMD_unaligned']['times'][self.results['SIMD_unaligned']['sizes'].index(size)] for size in common_sizes]
+        
+        # Normalize times relative to serial implementation
+        max_serial_time = max(serial_times)
+        normalized_serial = [t/max_serial_time for t in serial_times]
+        normalized_simd_16 = [t/max_serial_time for t in simd_16_times]
+        normalized_simd_unaligned = [t/max_serial_time for t in simd_unaligned_times]
+        
+        # Plot results
+        plt.loglog(common_sizes, normalized_serial, 'b-o', label='Serial (16B aligned)', 
+                linewidth=3, markersize=8, markerfacecolor='lightblue', markeredgecolor='blue')
+        
+        plt.loglog(common_sizes, normalized_simd_16, 'r-s', label='SIMD (16B aligned)', 
+                linewidth=3, markersize=8, markerfacecolor='lightcoral', markeredgecolor='red')
+        
+        plt.loglog(common_sizes, normalized_simd_unaligned, 'g-^', label='SIMD (unaligned)', 
+                linewidth=3, markersize=8, markerfacecolor='lightgreen', markeredgecolor='green')
         
         plt.xlabel('Input Vector Size (bytes)', fontsize=14, fontweight='bold')
-        plt.ylabel('Execution Time (ms)', fontsize=14, fontweight='bold')
-        plt.title('Performance Comparison: SIMD vs Serial Implementation\n(16-byte Aligned Data)', 
-                 fontsize=16, fontweight='bold')
+        plt.ylabel('Normalized Execution Time (Serial max = 1.0)', fontsize=14, fontweight='bold')
+        plt.title('Normalized Execution Time Comparison\nSerial vs SIMD (aligned/unaligned)', 
+                fontsize=16, fontweight='bold')
+        
+        # Set custom X-axis ticks to match our specific string sizes
+        plt.xticks(common_sizes, [str(size) for size in common_sizes], rotation=45)
+        
+        # Force the X-axis to use our specific sizes rather than base-10 logarithmic intervals
+        plt.xscale('log', base=2)
+        plt.gca().get_xaxis().set_major_formatter(plt.ScalarFormatter())
+        
         plt.legend(fontsize=12, loc='upper left')
         plt.grid(True, alpha=0.3, linestyle='--')
         
-        # Customize the plot to look more professional
-        plt.gca().tick_params(labelsize=12)
-        plt.gca().set_facecolor('#f8f9fa')
-        
-        # Add value annotations for key points
-        for i, (size, time) in enumerate(zip(serial_sizes, serial_times)):
-            if i % 3 == 0:  # Annotate every 3rd point to avoid overcrowding
-                plt.annotate(f'{time:.4f}ms', 
-                            xy=(size, time), xytext=(5, 10), 
-                            textcoords='offset points', fontsize=9, 
-                            ha='left', alpha=0.8, color='blue')
-        
-        for i, (size, time) in enumerate(zip(simd_sizes, simd_times)):
-            if i % 3 == 0:  # Annotate every 3rd point to avoid overcrowding
-                plt.annotate(f'{time:.4f}ms', 
-                            xy=(size, time), xytext=(5, -15), 
-                            textcoords='offset points', fontsize=9, 
-                            ha='left', alpha=0.8, color='red')
-        
-        plt.tight_layout()
-        plt.savefig(f"{output_dir}/execution_time_comparison.png", dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        print(f"Execution time plot saved: {output_dir}/execution_time_comparison.png")
-    
-    def _create_throughput_plot(self, output_dir: str):
-        """Create throughput comparison plot"""
-        
-        plt.figure(figsize=(12, 8))
-        
-        # Plot throughput results
-        serial_sizes = self.results['Serial']['sizes']
-        serial_throughputs = self.results['Serial']['throughputs']
-        simd_sizes = self.results['SIMD']['sizes']
-        simd_throughputs = self.results['SIMD']['throughputs']
-        
-        plt.semilogx(serial_sizes, serial_throughputs, 'b-o', label='Serial Implementation', 
-                    linewidth=3, markersize=8, markerfacecolor='lightblue', markeredgecolor='blue')
-        plt.semilogx(simd_sizes, simd_throughputs, 'r-s', label='SIMD Implementation (SSE4.2)', 
-                    linewidth=3, markersize=8, markerfacecolor='lightcoral', markeredgecolor='red')
-        
-        plt.xlabel('Input Vector Size (bytes)', fontsize=14, fontweight='bold')
-        plt.ylabel('Throughput (MB/s)', fontsize=14, fontweight='bold')
-        plt.title('Throughput Comparison: SIMD vs Serial Implementation\n(16-byte Aligned Data)', 
-                 fontsize=16, fontweight='bold')
-        plt.legend(fontsize=12, loc='lower right')
-        plt.grid(True, alpha=0.3, linestyle='--')
-        
-        plt.gca().tick_params(labelsize=12)
-        plt.gca().set_facecolor('#f8f9fa')
-        
-        plt.tight_layout()
-        plt.savefig(f"{output_dir}/throughput_comparison.png", dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        print(f"Throughput plot saved: {output_dir}/throughput_comparison.png")
-    
-    def _create_speedup_plot(self, output_dir: str):
-        """Create speedup comparison plot"""
-        
-        # Calculate speedups where both implementations have data
-        speedup_sizes = []
-        speedups = []
-        
-        serial_data = dict(zip(self.results['Serial']['sizes'], self.results['Serial']['times']))
-        simd_data = dict(zip(self.results['SIMD']['sizes'], self.results['SIMD']['times']))
-        
-        for size in serial_data:
-            if size in simd_data:
-                speedup = serial_data[size] / simd_data[size]
-                speedup_sizes.append(size)
-                speedups.append(speedup)
-        
-        if not speedups:
-            print("No speedup data available")
-            return
-        
-        plt.figure(figsize=(12, 8))
-        
-        # Create bar plot for speedup
-        x_pos = np.arange(len(speedup_sizes))
-        bars = plt.bar(x_pos, speedups, color='green', alpha=0.7, edgecolor='darkgreen', linewidth=2)
-        
-        # Add horizontal line at y=1 (no speedup)
-        plt.axhline(y=1, color='black', linestyle='--', alpha=0.8, linewidth=2, label='No speedup')
-        
         # Customize the plot
-        plt.xlabel('Input Vector Size (bytes)', fontsize=14, fontweight='bold')
-        plt.ylabel('Speedup (Serial Time / SIMD Time)', fontsize=14, fontweight='bold')
-        plt.title('SIMD Speedup over Serial Implementation\n(Multiple Sample Measurements)', 
-                 fontsize=16, fontweight='bold')
-        plt.xticks(x_pos, [f'{size}' for size in speedup_sizes], fontsize=12, rotation=45)
         plt.gca().tick_params(labelsize=12)
-        plt.grid(True, alpha=0.3, linestyle='--', axis='y')
-        plt.legend(fontsize=12)
-        
-        # Add value labels on bars
-        for i, (bar, speedup) in enumerate(zip(bars, speedups)):
-            height = bar.get_height()
-            plt.text(bar.get_x() + bar.get_width()/2., height + 0.05,
-                    f'{speedup:.2f}x', ha='center', va='bottom', fontsize=11, fontweight='bold')
-        
         plt.gca().set_facecolor('#f8f9fa')
+        
         plt.tight_layout()
-        plt.savefig(f"{output_dir}/speedup_comparison.png", dpi=300, bbox_inches='tight')
+        plt.savefig(f"{output_dir}/normalized_time_comparison.png", dpi=300, bbox_inches='tight')
         plt.close()
         
-        print(f"Speedup plot saved: {output_dir}/speedup_comparison.png")
-    
-    def print_summary_table(self):
-        """Print a summary table of results"""
-        
-        print("\n" + "="*80)
-        print("PERFORMANCE SUMMARY TABLE")
-        print("="*80)
-        print(f"{'Size (bytes)':<12} {'Serial (ms)':<15} {'SIMD (ms)':<15} {'Speedup':<10} {'SIMD Throughput':<15}")
-        print("-"*80)
-        
-        serial_data = dict(zip(self.results['Serial']['sizes'], self.results['Serial']['times']))
-        simd_data = dict(zip(self.results['SIMD']['sizes'], self.results['SIMD']['times']))
-        simd_throughput = dict(zip(self.results['SIMD']['sizes'], self.results['SIMD']['throughputs']))
-        
-        for size in sorted(set(serial_data.keys()) & set(simd_data.keys())):
-            serial_time = serial_data[size]
-            simd_time = simd_data[size]
-            speedup = serial_time / simd_time
-            throughput = simd_throughput[size]
-            
-            print(f"{size:<12} {serial_time:<15.6f} {simd_time:<15.6f} {speedup:<10.2f} {throughput:<15.1f}")
-        
-        print("="*80)
+        print(f"Normalized execution time plot saved: {output_dir}/normalized_time_comparison.png")
 
 def main():
-    # Updated string sizes - start from 16 bytes minimum, use more reasonable progression
+    # Fixed string sizes as specified
     STRING_SIZES = [16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536]
-    ALIGNMENTS = [16, 32]  # Test both 16 and 32 byte alignment
     TARGET_CHAR = ';'
     
     # Check if executables exist
@@ -370,12 +200,9 @@ def main():
         print("Error: ./char_count_simd not found. Please compile first with 'make'")
         sys.exit(1)
     
-    for alignment in ALIGNMENTS:
-        print(f"\n=== Testing with alignment: {alignment} bytes ===")
-        comparison = PerformanceComparison()
-        comparison.run_comparison_tests(STRING_SIZES, TARGET_CHAR, alignment)
-        comparison.create_performance_plots(f"comparison_plots_align{alignment}")
-        comparison.print_summary_table()
+    comparison = PerformanceComparison()
+    comparison.run_comparison_tests(STRING_SIZES, TARGET_CHAR)
+    comparison.create_normalized_time_plot()
     
     print("\nPerformance comparison completed!")
 

@@ -58,92 +58,9 @@ public:
 /**
  * Display character occurrence results in a readable format
  */
-void displayCharacterOccurrences(char targetChar, size_t occurrences, size_t totalChars) {
-    std::cout << "\n=== Character Occurrence Analysis ===" << std::endl;
-    
-    // Handle special characters for display
-    std::string charDisplay;
-    if (targetChar == ' ') charDisplay = "SPACE";
-    else if (targetChar == '\t') charDisplay = "TAB";
-    else if (targetChar == '\n') charDisplay = "NEWLINE";
-    else if (targetChar >= 32 && targetChar <= 126) charDisplay = std::string(1, targetChar);
-    else charDisplay = "CTRL";
-    
-    double frequency = totalChars > 0 ? (static_cast<double>(occurrences) / totalChars) * 100.0 : 0.0;
-    
-    std::cout << "Target Character: " << charDisplay << " (ASCII: " << static_cast<int>(targetChar) << ")" << std::endl;
-    std::cout << "Total Characters Analyzed: " << totalChars << std::endl;
-    std::cout << "Occurrences Found: " << occurrences << std::endl;
-    std::cout << "Frequency: " << std::fixed << std::setprecision(6) << frequency << "%" << std::endl;
-    std::cout << "====================================" << std::endl;
-}
 
-/**
- * Export results to CSV format
- */
-void exportResultsCSV(char targetChar, size_t occurrences, size_t totalChars, 
-                     const std::vector<double>& executionTimes, const TestConfiguration& config,
-                     const std::string& filename) {
-    std::ofstream file(filename);
-    if (!file.is_open()) {
-        std::cerr << "Error: Failed to create CSV file: " << filename << std::endl;
-        return;
-    }
 
-    // Calculate statistics
-    double totalTime = std::accumulate(executionTimes.begin(), executionTimes.end(), 0.0);
-    double avgTime = totalTime / executionTimes.size();
-    
-    double variance = 0;
-    for (double time : executionTimes) {
-        variance += (time - avgTime) * (time - avgTime);
-    }
-    double stdDev = std::sqrt(variance / executionTimes.size());
-    double minTime = *std::min_element(executionTimes.begin(), executionTimes.end());
-    double maxTime = *std::max_element(executionTimes.begin(), executionTimes.end());
-    
-    double avgThroughput = (config.stringLength / (avgTime / 1000.0)) / (1024.0 * 1024.0);
-    double avgCharsPerSec = totalChars / (avgTime / 1000.0);
-    double frequency = totalChars > 0 ? (static_cast<double>(occurrences) / totalChars) * 100.0 : 0.0;
-    
-    // Write metadata and summary
-    file << "# Serial Character Occurrence Counting Results\n";
-    file << "# Configuration\n";
-    file << "Implementation,Serial\n";
-    file << "TargetCharacter," << targetChar << "\n";
-    file << "TargetCharacterASCII," << static_cast<int>(targetChar) << "\n";
-    file << "StringLength," << config.stringLength << "\n";
-    file << "Alignment," << config.alignment << "\n";
-    file << "Repetitions," << config.repetitions << "\n";
-    file << "RandomSeed," << config.randomSeed << "\n";
-    file << "TotalCharacters," << totalChars << "\n";
-    file << "Occurrences," << occurrences << "\n";
-    file << "Frequency," << std::fixed << std::setprecision(6) << frequency << "\n";
-    file << "\n";
-    
-    // Performance summary
-    file << "# Performance Summary\n";
-    file << "Metric,Value,Unit\n";
-    file << "AvgExecutionTime," << avgTime << ",ms\n";
-    file << "StdDeviation," << stdDev << ",ms\n";
-    file << "MinExecutionTime," << minTime << ",ms\n";
-    file << "MaxExecutionTime," << maxTime << ",ms\n";
-    file << "AvgThroughput," << avgThroughput << ",MB/s\n";
-    file << "AvgCharsPerSecond," << avgCharsPerSec << ",chars/s\n";
-    file << "\n";
-    
-    // Individual execution times
-    file << "# Individual Execution Times\n";
-    file << "Run,ExecutionTime_ms,Throughput_MBps,CharsPerSecond\n";
-    for (size_t i = 0; i < executionTimes.size(); ++i) {
-        double throughput = (config.stringLength / (executionTimes[i] / 1000.0)) / (1024.0 * 1024.0);
-        double charsPerSec = totalChars / (executionTimes[i] / 1000.0);
-        file << (i + 1) << "," << executionTimes[i] << "," << throughput << "," << charsPerSec << "\n";
-    }
-    
-    file.close();
-    std::cout << "Results exported to: " << filename << std::endl;
-}
+
 
 /**
  * Run performance analysis with given configuration
